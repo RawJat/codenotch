@@ -29,6 +29,59 @@ fn depth_on_chain(
     ppid.get(&pid).and_then(|pp| chain.iter().position(|c| c == pp))
 }
 
+/// Bring a window to the front, restoring it first if it is minimised.
+#[cfg(windows)]
+fn raise_window(hwnd_raw: isize) -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        FlashWindowEx, IsIconic, SetForegroundWindow, ShowWindow, FLASHWINFO, FLASHW_ALL, SW_RESTORE,
+    };
+    unsafe {
+        let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        let _ = SetForegroundWindow(hwnd);
+        let fi = FLASHWINFO {
+            cbSize: std::mem::size_of::<FLASHWINFO>() as u32,
+            hwnd,
+            dwFlags: FLASHW_ALL,
+            uCount: 2,
+            dwTimeout: 0,
+        };
+        let _ = FlashWindowEx(&fi);
+    }
+    true
+}
+
+/// The window hosting a console process, asked of Windows rather than inferred from the process
+/// tree. Windows 11 hands a console to whatever is set as the default terminal, so a shell started
+/// from Explorer keeps explorer as its parent while Windows Terminal owns the window — a window on
+/// no ancestor chain, which the walk below can never reach. The console's own window points at it:
+/// its root owner is the terminal.
+#[cfg(windows)]
+fn console_window_of(pid: u32) -> Option<isize> {
+    use windows::Win32::System::Console::{AttachConsole, FreeConsole, GetConsoleWindow};
+    use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, IsWindowVisible, GA_ROOTOWNER};
+    unsafe {
+        // A process holds one console at a time. A build launched from a terminal already has one,
+        // and AttachConsole then fails rather than stealing it — leave that console alone.
+        AttachConsole(pid).ok()?;
+        let console = GetConsoleWindow();
+        let root = if console.0.is_null() {
+            None
+        } else {
+            Some(GetAncestor(console, GA_ROOTOWNER))
+        };
+        let _ = FreeConsole();
+        let root = root?;
+        if root.0.is_null() || !IsWindowVisible(root).as_bool() {
+            return None;
+        }
+        Some(root.0 as isize)
+    }
+}
+
 #[cfg(windows)]
 pub fn focus_terminal(claude_pid: u32) -> bool {
     use std::collections::HashMap;
@@ -38,12 +91,17 @@ pub fn focus_terminal(claude_pid: u32) -> bool {
         TH32CS_SNAPPROCESS,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, FlashWindowEx, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible, SetForegroundWindow, ShowWindow, FLASHWINFO, FLASHW_ALL, SW_RESTORE,
+        EnumWindows, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible,
     };
 
     if claude_pid == 0 {
         return false;
+    }
+
+    // 0) The console's host, when Windows can name it: this is the only path that finds a terminal
+    //    hosting the session out of tree, as Windows Terminal does for a shell started elsewhere.
+    if let Some(h) = console_window_of(claude_pid) {
+        return raise_window(h);
     }
 
     // 1) Full pid -> ppid snapshot
@@ -98,22 +156,7 @@ pub fn focus_terminal(claude_pid: u32) -> bool {
     let Some(hwnd_raw) = pick_window(&chain, &ppid_map, &raw) else {
         return false;
     };
-    unsafe {
-        let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
-        if IsIconic(hwnd).as_bool() {
-            let _ = ShowWindow(hwnd, SW_RESTORE);
-        }
-        let _ = SetForegroundWindow(hwnd);
-        let fi = FLASHWINFO {
-            cbSize: std::mem::size_of::<FLASHWINFO>() as u32,
-            hwnd,
-            dwFlags: FLASHW_ALL,
-            uCount: 2,
-            dwTimeout: 0,
-        };
-        let _ = FlashWindowEx(&fi);
-    }
-    true
+    raise_window(hwnd_raw)
 }
 
 #[cfg(not(windows))]
