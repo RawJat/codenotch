@@ -1,6 +1,34 @@
 //! Jump back to the right terminal: from the session's Claude CLI process PID, walk the parent chain
 //! to the hosting terminal window, then SetForegroundWindow + FlashWindowEx. Returns false on failure (the page reports it).
 
+/// Which window to raise, given a session's ancestor chain and the visible titled windows as
+/// (handle, pid). The match nearest the session wins: walking to the top of the chain reaches
+/// explorer.exe, whose "Program Manager" window is visible and titled, so preferring the highest
+/// match raised the desktop for every session started from an editor's terminal.
+pub(crate) fn pick_window(
+    chain: &[u32],
+    ppid: &std::collections::HashMap<u32, u32>,
+    wins: &[(isize, u32)],
+) -> Option<isize> {
+    wins.iter()
+        .filter_map(|&(hwnd, pid)| depth_on_chain(pid, chain, ppid).map(|d| (d, hwnd)))
+        .min_by_key(|&(d, _)| d)
+        .map(|(_, hwnd)| hwnd)
+}
+
+/// How far from the session a window's owner sits: its own place on the chain, or its parent's —
+/// the classic conhost case, where the console window belongs to a child of the shell.
+fn depth_on_chain(
+    pid: u32,
+    chain: &[u32],
+    ppid: &std::collections::HashMap<u32, u32>,
+) -> Option<usize> {
+    if let Some(i) = chain.iter().position(|&c| c == pid) {
+        return Some(i);
+    }
+    ppid.get(&pid).and_then(|pp| chain.iter().position(|c| c == pp))
+}
+
 #[cfg(windows)]
 pub fn focus_terminal(claude_pid: u32) -> bool {
     use std::collections::HashMap;
@@ -53,11 +81,6 @@ pub fn focus_terminal(claude_pid: u32) -> bool {
     }
 
     // 3) Enumerate visible top-level windows
-    struct Cand {
-        hwnd: isize,
-        pid: u32,
-    }
-    let mut wins: Vec<Cand> = Vec::new();
     unsafe extern "system" fn cb(hwnd: HWND, l: LPARAM) -> BOOL {
         let v = &mut *(l.0 as *mut Vec<(isize, u32)>);
         if IsWindowVisible(hwnd).as_bool() && GetWindowTextLengthW(hwnd) > 0 {
@@ -71,29 +94,8 @@ pub fn focus_terminal(claude_pid: u32) -> bool {
     unsafe {
         let _ = EnumWindows(Some(cb), LPARAM(&mut raw as *mut _ as isize));
     }
-    for (h, p) in raw {
-        wins.push(Cand { hwnd: h, pid: p });
-    }
-
-    // 4) Score: the window's PID is on the ancestor chain (higher up = the real terminal host = higher
-    //    score), or the window PID's parent is on the chain (the classic conhost case).
-    let score_of = |pid: u32| -> Option<usize> {
-        if let Some(i) = chain.iter().position(|&c| c == pid) {
-            return Some(i);
-        }
-        if let Some(&pp) = ppid_map.get(&pid) {
-            if let Some(i) = chain.iter().position(|&c| c == pp) {
-                return Some(i);
-            }
-        }
-        None
-    };
-    let best = wins
-        .iter()
-        .filter_map(|w| score_of(w.pid).map(|s| (s, w.hwnd)))
-        .max_by_key(|(s, _)| *s);
-
-    let Some((_, hwnd_raw)) = best else {
+    // 4) The nearest window-owning ancestor is the one that hosts this session
+    let Some(hwnd_raw) = pick_window(&chain, &ppid_map, &raw) else {
         return false;
     };
     unsafe {
@@ -271,4 +273,38 @@ pub fn focus_claude_desktop() -> bool {
 #[cfg(not(windows))]
 pub fn focus_claude_desktop() -> bool {
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_window;
+    use std::collections::HashMap;
+
+    /// Claude in an editor's terminal: the chain runs claude -> pty host -> editor -> explorer, and
+    /// explorer owns "Program Manager". Raising the desktop instead of the editor is the bug this
+    /// ordering fixes.
+    #[test]
+    fn the_editor_window_wins_over_the_desktop() {
+        let chain = [25548, 18096, 3940, 10396];
+        let ppid = HashMap::new();
+        let wins = [(0x2a_isize, 3940_u32), (0x1b, 10396)];
+        assert_eq!(pick_window(&chain, &ppid, &wins), Some(0x2a));
+    }
+
+    /// The console window belongs to conhost, a child of the shell rather than an ancestor of Claude
+    #[test]
+    fn a_console_window_counts_through_its_parent() {
+        let chain = [700, 800];
+        let ppid = HashMap::from([(900_u32, 800_u32)]);
+        let wins = [(0x3c_isize, 900_u32)];
+        assert_eq!(pick_window(&chain, &ppid, &wins), Some(0x3c));
+    }
+
+    #[test]
+    fn a_window_belonging_to_nobody_on_the_chain_is_no_jump() {
+        let chain = [700, 800];
+        let ppid = HashMap::from([(4242_u32, 4243_u32)]);
+        let wins = [(0x4d_isize, 4242_u32)];
+        assert_eq!(pick_window(&chain, &ppid, &wins), None);
+    }
 }
