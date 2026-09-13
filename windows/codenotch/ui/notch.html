@@ -97,6 +97,9 @@
   .c-note{font-size:12px;color:#c8c8c8;line-height:1.5;margin-top:6px}
   .c-sessions{margin-top:12px;border-top:1px solid #1e1e1e;padding-top:8px}
   .s-row{display:flex;align-items:center;gap:6px;font-size:11px;color:#b0b0b3;padding:2px 0}
+  /* Only Claude rows can be jumped to; the other providers have no focus path, so only these look clickable */
+  .s-row.jump{cursor:pointer;margin:0 -6px;padding:2px 6px;border-radius:6px}
+  .s-row.jump:hover{background:#1b1b1b;color:#e8e8ea}
   .s-dot{width:6px;height:6px;border-radius:3px;flex:0 0 auto}
   /* Size slider — the last row of the hover card. Only the pill is scaled, so this row keeps its
      own size and does not move out from under the cursor while it is being dragged. */
@@ -402,7 +405,7 @@ function renderCard(){
     if(act.length){
       html+=`<div class="c-sessions">`;
       for(const s of act.slice(0,5)){
-        html+=`<div class="s-row"><span class="s-dot" style="background:${STATE_DOT[s.state]||'#666'}"></span>${esc(s.title)}</div>`;
+        html+=`<div class="s-row jump" data-sid="${esc(s.id)}"><span class="s-dot" style="background:${STATE_DOT[s.state]||'#666'}"></span>${esc(s.title)}</div>`;
       }
       html+=`</div>`;
     }
@@ -420,6 +423,7 @@ function renderCard(){
   html+=`<div class="c-scale"><input id="scale-range" type="range" min="40" max="100" step="5" value="${scalePct}" aria-label="${textCopy('Notch size')}" title="${textCopy('Notch size')}"><span class="c-scale-val" id="scale-val">${scalePct}%</span></div>`;
   c.innerHTML=html;
   wireScaleRow();
+  wireSessionRows();
   placeCard();
 }
 // The card follows the hovered cell: vertically centred on it (kept inside the window), tail pointing at it
@@ -485,6 +489,18 @@ function wireScaleRow(){
   r.addEventListener('input',()=>applyScale(r.value)); // live while dragging, and on arrow keys
   r.addEventListener('pointerdown',()=>{scaleDragging=true;});
   r.addEventListener('mousedown',()=>{scaleDragging=true;});
+}
+// A session row jumps to the window that owns it: the CLI's terminal, or the desktop app. Rust
+// answers false when it can find neither, and saying so beats a click that quietly does nothing.
+function wireSessionRows(){
+  for(const row of card.querySelectorAll('.s-row.jump')){
+    row.addEventListener('click',()=>{
+      const id=row.dataset.sid; if(!id) return;
+      invoke('focus_session',{id})
+        .then(ok=>{if(!ok) notice(textCopy('Could not find that session window'));})
+        .catch(e=>notice('focus_session failed: '+e));
+    });
+  }
 }
 document.addEventListener('pointerup',()=>{scaleDragging=false;});
 document.addEventListener('pointercancel',()=>{scaleDragging=false;});
