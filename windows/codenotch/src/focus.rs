@@ -61,19 +61,29 @@ fn raise_window(hwnd_raw: isize) -> bool {
 /// its root owner is the terminal.
 #[cfg(windows)]
 fn console_window_of(pid: u32) -> Option<isize> {
-    use windows::Win32::System::Console::{AttachConsole, FreeConsole, GetConsoleWindow};
+    use windows::Win32::System::Console::{
+        AttachConsole, FreeConsole, GetConsoleWindow, ATTACH_PARENT_PROCESS,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, IsWindowVisible, GA_ROOTOWNER};
     unsafe {
-        // A process holds one console at a time. A build launched from a terminal already has one,
-        // and AttachConsole then fails rather than stealing it — leave that console alone.
-        AttachConsole(pid).ok()?;
-        let console = GetConsoleWindow();
-        let root = if console.0.is_null() {
-            None
-        } else {
-            Some(GetAncestor(console, GA_ROOTOWNER))
-        };
+        // A process holds one console at a time, and this one usually has one: main() attaches to
+        // its parent's at startup, and when codenotch-hook launches the app that parent sits in a
+        // Claude Code terminal. Let it go for the lookup, then take the parent's back — the state
+        // startup left, or none once the hook that launched the app has exited.
         let _ = FreeConsole();
+        let root = if AttachConsole(pid).is_ok() {
+            let console = GetConsoleWindow();
+            let root = if console.0.is_null() {
+                None
+            } else {
+                Some(GetAncestor(console, GA_ROOTOWNER))
+            };
+            let _ = FreeConsole();
+            root
+        } else {
+            None
+        };
+        let _ = AttachConsole(ATTACH_PARENT_PROCESS);
         let root = root?;
         if root.0.is_null() || !IsWindowVisible(root).as_bool() {
             return None;
