@@ -2042,6 +2042,7 @@ fn main() {
             dropzones::get_zones,
             settings_window::get_system_look,
             settings_window::quit_app,
+            settings_window::settings_ready,
             settings_window::open_author_page
         ])
         .setup(move |app| {

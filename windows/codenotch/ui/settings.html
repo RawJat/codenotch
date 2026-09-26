@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html class="booting">
 <head>
 <meta charset="UTF-8">
 <title>Codenotch Settings</title>
@@ -102,6 +102,7 @@
   .switch.on{border-color:transparent;background:var(--accent)}
   .switch.on::after{left:23px;background:var(--on-accent)}
   .switch:disabled,.switch.locked{opacity:.5}
+  .booting .switch::after{transition:none}
   .seg{display:inline-flex;background:var(--seg-bg);border-radius:7px;padding:2px;gap:2px;flex:none}
   .seg button{border:0;background:transparent;font-size:13px;padding:3px 14px;border-radius:5px}
   .seg button:hover:not(.on):not(:disabled){background:var(--hover)}
@@ -1080,7 +1081,7 @@ function applyAccent(){
   root.setProperty('--on-accent', isDark() ? '#000000' : '#ffffff');
 }
 function loadLook(){
-  call('get_system_look', undefined, null).then(look => {
+  return call('get_system_look', undefined, null).then(look => {
     if(!look) return;
     document.body.classList.toggle('solid', !look.mica);
     if(Array.isArray(look.accent) && look.accent.length >= 5) palette = look.accent;
@@ -1157,7 +1158,7 @@ function glyphHtml(p){
   return '<span class="glyph letter">' + esc((p.label || p.id).charAt(0)) + '</span>';
 }
 function refreshOptions(){
-  call('get_tray_options', undefined, null).then(opts => {
+  return call('get_tray_options', undefined, null).then(opts => {
     if(Array.isArray(opts) && opts.length){ options = opts.filter(o => o && typeof o.id === 'string'); renderAccounts(); }
   });
 }
@@ -1713,37 +1714,45 @@ function renderAll(){
 function boot(){
   showTab(savedTab());
   setUiLanguage('auto');
-  loadLook();
-  refreshOptions();
-  call('get_notch_slots', undefined, []).then(v => {
-    notchSlots = Array.isArray(v) ? v.filter(x => x && typeof x.provider === 'string').map(x => ({ provider:x.provider })) : [];
-    renderAccounts();
-  });
-  call('get_antigravity_prefs', undefined, null).then(v => { if(v && typeof v === 'object'){ agPrefs = v; renderAccounts(); } });
-  call('get_glyphs', undefined, null).then(g => { if(g && typeof g === 'object'){ glyphs = g; renderAccounts(); } });
+  const first = [
+    loadLook(),
+    refreshOptions(),
+    call('get_notch_slots', undefined, []).then(v => {
+      notchSlots = Array.isArray(v) ? v.filter(x => x && typeof x.provider === 'string').map(x => ({ provider:x.provider })) : [];
+      renderAccounts();
+    }),
+    call('get_antigravity_prefs', undefined, null).then(v => { if(v && typeof v === 'object'){ agPrefs = v; renderAccounts(); } }),
+    call('get_glyphs', undefined, null).then(g => { if(g && typeof g === 'object'){ glyphs = g; renderAccounts(); } }),
+    call('get_scale', undefined, null).then(v => { if(typeof v === 'number') notchSize = v; renderSize(); }),
+    call('get_notch_edge', undefined, null).then(v => { if(typeof v === 'string') notchEdge = v; renderEdge(); }),
+    refreshScreens(),
+    call('get_weekly_ring', undefined, null).then(v => { if(typeof v === 'string') weeklyRing = v; renderWeekly(); }),
+    call('get_color_transition', undefined, null).then(v => { if(typeof v === 'string') colorTransition = v; renderTransition(); }),
+    call('get_watch_limit', undefined, null).then(v => { if(typeof v === 'number') watchLimit = v; renderLimits(); }),
+    call('get_critical_limit', undefined, null).then(v => { if(typeof v === 'number') criticalLimit = v; renderLimits(); }),
+    call('get_theme', undefined, null).then(v => { if(typeof v === 'string') theme = v; renderTheme(); }),
+    call('get_theme_resolved', undefined, null).then(v => { if(typeof v === 'string') applyTheme(v); }),
+    call('get_ui_flags', undefined, null).then(v => { if(v && typeof v === 'object') flags = readFlags(v); renderFlags(); }),
+    Promise.all([call('get_lang', undefined, 'auto'), call('get_lang_resolved', undefined, 'en')]).then(([raw, resolved]) => {
+      const l = (typeof raw === 'string' && LANGS.indexOf(raw) >= 0) ? raw : 'auto';
+      const sel = document.getElementById('lang');
+      sel.value = l;
+      sel.dataset.previous = l;
+      setUiLanguage(l === 'auto' && typeof resolved === 'string' ? resolved : l);
+    }),
+    autostart.refresh(),
+    moveHandle.refresh(),
+    adaptivePill.refresh(),
+    weeklyDashed.refresh(),
+    hooks.refresh()
+  ];
   try { window.__TAURI__.event.listen('glyphs', e => { if(e.payload){ glyphs = e.payload; renderAccounts(); } }); } catch(e) { /* the letters stay */ }
-  call('get_scale', undefined, null).then(v => { if(typeof v === 'number') notchSize = v; renderSize(); });
-  call('get_notch_edge', undefined, null).then(v => { if(typeof v === 'string') notchEdge = v; renderEdge(); });
-  refreshScreens();
-  call('get_weekly_ring', undefined, null).then(v => { if(typeof v === 'string') weeklyRing = v; renderWeekly(); });
-  call('get_color_transition', undefined, null).then(v => { if(typeof v === 'string') colorTransition = v; renderTransition(); });
-  call('get_watch_limit', undefined, null).then(v => { if(typeof v === 'number') watchLimit = v; renderLimits(); });
-  call('get_critical_limit', undefined, null).then(v => { if(typeof v === 'number') criticalLimit = v; renderLimits(); });
-  call('get_theme', undefined, null).then(v => { if(typeof v === 'string') theme = v; renderTheme(); });
-  call('get_theme_resolved', undefined, null).then(v => { if(typeof v === 'string') applyTheme(v); });
-  call('get_ui_flags', undefined, null).then(v => { if(v && typeof v === 'object') flags = readFlags(v); renderFlags(); });
-  Promise.all([call('get_lang', undefined, 'auto'), call('get_lang_resolved', undefined, 'en')]).then(([raw, resolved]) => {
-    const l = (typeof raw === 'string' && LANGS.indexOf(raw) >= 0) ? raw : 'auto';
-    const sel = document.getElementById('lang');
-    sel.value = l;
-    sel.dataset.previous = l;
-    setUiLanguage(l === 'auto' && typeof resolved === 'string' ? resolved : l);
-  });
-  autostart.refresh();
-  moveHandle.refresh();
-  adaptivePill.refresh();
-  weeklyDashed.refresh();
-  hooks.refresh();
+  // The window stays hidden until this first state is drawn (settings_window.rs), so it opens already
+  // translated and with every switch where it belongs. A read that hangs holds it back 1.5 s at most.
+  Promise.race([Promise.allSettled(first), new Promise(r => setTimeout(r, 1500))])
+    .then(() => invoke('settings_ready'))
+    .catch(() => {})
+    .then(() => setTimeout(() => document.documentElement.classList.remove('booting'), 250));
 }
 /* Readings and the accent can change while the window is behind something else; coming back to it is
    when the old values are wrong, so that is when they are read again. */
