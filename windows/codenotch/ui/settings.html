@@ -160,6 +160,7 @@
           <div class="item cap" id="cap-theme" data-dynamic></div>
           <div class="item"><span>Weekly ring</span><span class="seg" id="seg-weekly"><button data-v="off">Off</button><button data-v="inside">Inside</button><button data-v="outside">Outside</button></span></div>
           <div class="item cap" id="cap-weekly" data-dynamic></div>
+          <div class="item" id="row-weekly-dashed" hidden><span>Dashed weekly ring</span><button class="switch" id="sw-weekly-dashed" role="switch" aria-checked="false" aria-label="Dashed weekly ring"></button></div>
           <div class="item"><span>Colour transition</span><span class="seg" id="seg-transition"><button data-v="hard_step">Hard step</button><button data-v="ramp">Colour ramp</button></span></div>
           <div class="item cap" id="cap-transition" data-dynamic></div>
           <div class="item"><span>Edge</span><span class="seg" id="seg-edge"><button data-v="left">Left</button><button data-v="right">Right</button><button data-v="top">Top</button><button data-v="bottom">Bottom</button></span></div>
@@ -298,6 +299,7 @@ const PT_BR_STATIC = {
   'The size the notch was drawn at.':'O tamanho com que o notch foi desenhado.',
   'Easier to read at a glance, and harder to ignore.':'Mais fácil de ler de relance, e mais difícil de ignorar.',
   'Weekly ring':'Anel semanal',
+  'Dashed weekly ring':'Anel semanal tracejado',
   'Off':'Desativado',
   'Inside':'Dentro',
   'Outside':'Fora',
@@ -387,6 +389,7 @@ const RU_STATIC = {
   'The size the notch was drawn at.':'Размер, для которого была отрисована панель.',
   'Easier to read at a glance, and harder to ignore.':'Легче читать одним взглядом, но сложнее не заметить.',
   'Weekly ring':'Недельное кольцо', 'Off':'Выкл.', 'Inside':'Внутри', 'Outside':'Снаружи',
+  'Dashed weekly ring':'Пунктирное недельное кольцо',
   'One ring per provider, showing the headline limit. The weekly allowance stays in the hover card.':'Одно кольцо на провайдера с основным лимитом. Недельная квота остаётся в карточке при наведении.',
   'A thinner ring for the weekly limit, drawn inside the main one. It shares the gap with the working indicator.':'Тонкое кольцо недельного лимита внутри основного. Оно делит зазор с индикатором работы.',
   'A thinner ring for the weekly limit, drawn around the main one, in the margin between the ring and the notch edge.':'Тонкое кольцо недельного лимита вокруг основного, в промежутке между кольцом и краем панели.',
@@ -473,6 +476,7 @@ const ZH_STATIC = {
   'The size the notch was drawn at.':'刘海绘制时的尺寸。',
   'Easier to read at a glance, and harder to ignore.':'一眼更好读，也更难忽视。',
   'Weekly ring':'每周圆环',
+  'Dashed weekly ring':'虚线每周圆环',
   'Off':'关闭',
   'Inside':'内侧',
   'Outside':'外侧',
@@ -576,6 +580,7 @@ const ZH_HANT_STATIC = {
   'The size the notch was drawn at.':'瀏海繪製時的尺寸。',
   'Easier to read at a glance, and harder to ignore.':'一眼更好讀，也更難忽視。',
   'Weekly ring':'每週圓環',
+  'Dashed weekly ring':'虛線每週圓環',
   'Off':'關閉',
   'Inside':'內側',
   'Outside':'外側',
@@ -681,6 +686,7 @@ const JA_STATIC = {
   'The size the notch was drawn at.':'ノッチが本来描かれるサイズ。',
   'Easier to read at a glance, and harder to ignore.':'ひと目で読みやすく、無視しにくいサイズ。',
   'Weekly ring':'週間のリング',
+  'Dashed weekly ring':'週間のリングを破線にする',
   'Off':'オフ',
   'Inside':'内側',
   'Outside':'外側',
@@ -769,6 +775,7 @@ const KO_STATIC = {
   'The size the notch was drawn at.':'노치의 원래 디자인 크기입니다.',
   'Easier to read at a glance, and harder to ignore.':'한눈에 읽기 쉽고 눈에 잘 띕니다.',
   'Weekly ring':'주간 링',
+  'Dashed weekly ring':'주간 링을 점선으로 표시',
   'Off':'끄기',
   'Inside':'안쪽',
   'Outside':'바깥쪽',
@@ -874,6 +881,7 @@ const UK_STATIC = {
   'The size the notch was drawn at.':'Розмір, для якого виріз і малювався.',
   'Easier to read at a glance, and harder to ignore.':'Легше прочитати одним поглядом і важче не помітити.',
   'Weekly ring':'Тижневе кільце',
+  'Dashed weekly ring':'Пунктирне тижневе кільце',
   'Off':'Вимк.',
   'Inside':'Усередині',
   'Outside':'Ззовні',
@@ -1141,6 +1149,8 @@ const moveHandle = remote('get_move_handle', 'set_move_handle', 'Show move handl
 document.getElementById('sw-move').addEventListener('click', () => moveHandle.toggle());
 const adaptivePill = remote('get_adaptive_pill', 'set_adaptive_pill', 'Adaptive pill', () => drawSwitch(document.getElementById('sw-adaptive'), adaptivePill));
 document.getElementById('sw-adaptive').addEventListener('click', () => adaptivePill.toggle());
+const weeklyDashed = remote('get_weekly_ring_dashed', 'set_weekly_ring_dashed', 'Dashed weekly ring', () => drawSwitch(document.getElementById('sw-weekly-dashed'), weeklyDashed));
+document.getElementById('sw-weekly-dashed').addEventListener('click', () => weeklyDashed.toggle());
 
 /* ---- Accounts: which providers get a ring --------------------------------
    Stored as {provider} slots, and an EMPTY list means every provider, so a provider added in a
@@ -1461,6 +1471,7 @@ function renderWeekly(){
   }
   const why = WEEKLY_WHY[weeklyRing] || '';
   document.getElementById('cap-weekly').textContent = ui(why, why);
+  document.getElementById('row-weekly-dashed').hidden = weeklyRing === 'off';
 }
 document.getElementById('seg-weekly').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -1597,6 +1608,7 @@ function renderAll(){
   drawSwitch(document.getElementById('sw-autostart'), autostart);
   drawSwitch(document.getElementById('sw-move'), moveHandle);
   drawSwitch(document.getElementById('sw-adaptive'), adaptivePill);
+  drawSwitch(document.getElementById('sw-weekly-dashed'), weeklyDashed);
   if(updState) renderUpdate(updState);
   document.getElementById('title').textContent = ui(TITLES[curTab], TITLES[curTab]);
 }
@@ -1630,6 +1642,7 @@ function boot(){
   autostart.refresh();
   moveHandle.refresh();
   adaptivePill.refresh();
+  weeklyDashed.refresh();
   hooks.refresh();
 }
 /* Readings and the accent can change while the window is behind something else; coming back to it is

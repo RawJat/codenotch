@@ -1022,6 +1022,7 @@ function providers(){
 let agPrefs={limit:'automatic',model:'gemini'};
 // Where the weekly limit's own ring goes, from settings: 'off', 'inside' or 'outside'
 let weeklyRing='off';
+let weeklyRingDashed=false;
 // The tightest metered window, ties going to the lower id so the choice never flickers
 function tightestOf(ws){
   return ws.filter(w=>w.count==null).reduce((a,b)=>!a||b.used>a.used||(b.used===a.used&&b.id<a.id)?b:a,null);
@@ -1081,6 +1082,23 @@ function svgArc(r,frac,color,width,extra=''){
     transform="rotate(-90 28 28)" ${extra}/>`;
 }
 
+// svgArc's sweep drawn as the Mac's dashed weekly ring: 4-on 2-off butt-capped ticks. A circle has
+// one dasharray, and svgArc spends it on cropping to `frac`, so the ticks are spelled out up to the
+// sweep's end (the last one cut short) and a closing gap takes up the rest of the circumference.
+function dashedArc(r,frac,color,width,extra=''){
+  if(!(frac>0)) return '';
+  const C=2*Math.PI*r, len=C*Math.min(frac,1), seg=4, gap=2, parts=[];
+  let pos=0;
+  for(;;){
+    const d=Math.min(seg,len-pos); pos+=d;
+    if(pos+gap>=len){ parts.push(d,C-pos); break; }
+    parts.push(d,gap); pos+=gap;
+  }
+  return `<circle cx="28" cy="28" r="${r}" fill="none" stroke="${color}" stroke-width="${width}"
+    stroke-dasharray="${parts.map(n=>n.toFixed(2)).join(' ')}" stroke-linecap="butt"
+    transform="rotate(-90 28 28)" ${extra}/>`;
+}
+
 function renderRing(){
   const ps=providers();
   // Rebuild the DOM only when the structure changes (never swap the element under the cursor)
@@ -1104,8 +1122,13 @@ function renderRing(){
       const taken=weeklyRing==='inside'&&workState(p.base)!=='idle';
       if(wk&&(!h||wk.id!==h.id)&&!taken){
         const r=weeklyRing==='inside'?16:31;
-        inner+=`<circle cx="28" cy="28" r="${r}" fill="none" stroke="${TRACK}" stroke-width="2.4" opacity="0.7"/>`
-          +svgArc(r,Math.min(wk.used,1),tone(wk.used),2.4,'opacity="0.85"');
+        const track=weeklyRingDashed
+          ?`<circle cx="28" cy="28" r="${r}" fill="none" stroke="${TRACK}" stroke-width="2.4" stroke-dasharray="4 2" opacity="0.7"/>`
+          :`<circle cx="28" cy="28" r="${r}" fill="none" stroke="${TRACK}" stroke-width="2.4" opacity="0.7"/>`;
+        const arc=weeklyRingDashed
+          ?dashedArc(r,Math.min(wk.used,1),tone(wk.used),2.4,'opacity="0.85"')
+          :svgArc(r,Math.min(wk.used,1),tone(wk.used),2.4,'opacity="0.85"');
+        inner+=track+arc;
       }
     }
     svg.innerHTML=inner;
@@ -1608,6 +1631,8 @@ invoke('get_weekly_ring').then(v=>{if(typeof v==='string'){weeklyRing=v;renderRi
 listen('weekly_ring',e=>{if(typeof e.payload==='string'){weeklyRing=e.payload;renderRing();}}).catch(()=>{});
 invoke('get_color_transition').then(v=>{if(typeof v==='string'){colorTransition=v;renderRing();}}).catch(()=>{});
 listen('color_transition',e=>{if(typeof e.payload==='string'){colorTransition=e.payload;renderRing();}}).catch(()=>{});
+invoke('get_weekly_ring_dashed').then(v=>{if(typeof v==='boolean'){weeklyRingDashed=v;renderRing();}}).catch(()=>{});
+listen('weekly_ring_dashed',e=>{if(typeof e.payload==='boolean'){weeklyRingDashed=e.payload;renderRing();}}).catch(()=>{});
 listen('antigravity_prefs',e=>{if(e.payload){agPrefs=e.payload;renderRing();}}).catch(()=>{});
 listen('glyphs',e=>{glyphs=e.payload||glyphs;renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
 listen('activity',e=>{activity=e.payload||activity;renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});

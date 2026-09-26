@@ -64,6 +64,11 @@ pub struct Config {
     /// Where the weekly limit gets a ring of its own: "off", "inside" or "outside".
     #[serde(default = "default_weekly_ring")]
     pub weekly_ring: String,
+    /// true = the weekly ring's track and its own arc are drawn in small dashes rather than a
+    /// solid line, as the Mac's "Dashed weekly ring" switch does. Only means anything while
+    /// `weekly_ring` is not "off". Off by default: an extra visual change nobody asked for.
+    #[serde(default)]
+    pub weekly_ring_dashed: bool,
     /// How a usage ring changes colour: "hard_step" or "ramp".
     #[serde(default = "default_color_transition")]
     pub color_transition: String,
@@ -255,6 +260,7 @@ impl Default for Config {
             notch_monitor: None,
             scale: default_scale(),
             weekly_ring: default_weekly_ring(),
+            weekly_ring_dashed: false,
             color_transition: default_color_transition(),
             theme: default_theme(),
             notch_providers: Vec::new(), // empty = show them all
