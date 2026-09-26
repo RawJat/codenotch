@@ -1211,6 +1211,68 @@ fn set_weekly_ring_dashed(app: AppHandle, on: bool) -> bool {
     on
 }
 
+/// Where a ring turns from Ample to Watch, as a fraction of the limit.
+#[tauri::command]
+fn get_watch_limit(app: AppHandle) -> f64 {
+    let st = app.state::<AppState>();
+    let c = st.cfg.lock().unwrap();
+    c.watch_limit
+}
+
+/// Clamped below `critical_limit`, so the two sliders can never cross.
+#[tauri::command]
+fn set_watch_limit(app: AppHandle, value: f64) -> f64 {
+    let value = {
+        let st = app.state::<AppState>();
+        let mut c = st.cfg.lock().unwrap();
+        c.watch_limit = config::clamp_watch_limit(value, c.critical_limit);
+        config::save(&c);
+        c.watch_limit
+    };
+    let _ = app.emit("watch_limit", value);
+    value
+}
+
+/// Where a ring turns from Watch to Critical, as a fraction of the limit.
+#[tauri::command]
+fn get_critical_limit(app: AppHandle) -> f64 {
+    let st = app.state::<AppState>();
+    let c = st.cfg.lock().unwrap();
+    c.critical_limit
+}
+
+/// Clamped above `watch_limit`, so the two sliders can never cross.
+#[tauri::command]
+fn set_critical_limit(app: AppHandle, value: f64) -> f64 {
+    let value = {
+        let st = app.state::<AppState>();
+        let mut c = st.cfg.lock().unwrap();
+        c.critical_limit = config::clamp_critical_limit(value, c.watch_limit);
+        config::save(&c);
+        c.critical_limit
+    };
+    let _ = app.emit("critical_limit", value);
+    value
+}
+
+/// Critical first, then watch, the same order the Mac's own reset button uses: resetting watch
+/// against a low stored critical would otherwise pin it there and the reset would look like it
+/// did nothing.
+#[tauri::command]
+fn reset_usage_limits(app: AppHandle) -> (f64, f64) {
+    let (watch, critical) = {
+        let st = app.state::<AppState>();
+        let mut c = st.cfg.lock().unwrap();
+        c.critical_limit = config::default_critical_limit();
+        c.watch_limit = config::default_watch_limit();
+        config::save(&c);
+        (c.watch_limit, c.critical_limit)
+    };
+    let _ = app.emit("critical_limit", critical);
+    let _ = app.emit("watch_limit", watch);
+    (watch, critical)
+}
+
 /// How the usage rings change colour as the allowance is used.
 #[tauri::command]
 fn get_color_transition(app: AppHandle) -> String {
@@ -1943,6 +2005,11 @@ fn main() {
             set_weekly_ring_dashed,
             get_color_transition,
             set_color_transition,
+            get_watch_limit,
+            set_watch_limit,
+            get_critical_limit,
+            set_critical_limit,
+            reset_usage_limits,
             get_theme,
             set_theme,
             get_theme_resolved,

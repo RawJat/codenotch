@@ -109,6 +109,13 @@
   .seg button:disabled{opacity:.45}
   .btn{border:0;background:var(--btn);font-size:13px;padding:5px 12px;border-radius:6px;flex:none}
   .btn:hover{background:var(--btn-hover)}
+  /* As wide as the Colour transition control above (--slider-w is measured from it), so they line up */
+  .item.slider > .value{margin-left:auto;min-width:4ch;text-align:right;font-variant-numeric:tabular-nums}
+  .item.slider > input.range{-webkit-appearance:none;appearance:none;flex:none;width:var(--slider-w,180px);height:16px;margin:0;background:transparent}
+  .item.slider > input.range::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+    background:linear-gradient(var(--accent),var(--accent)) 0 0/calc(6px + (100% - 12px) * var(--f,.5)) 100% no-repeat,var(--btn-hover)}
+  .item.slider > input.range::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border:0;border-radius:50%;background:var(--accent)}
+  .item.slider > input.range:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
   select{font:inherit;font-size:13px;color:var(--text);background:var(--seg-bg);border:0;border-radius:6px;padding:4px 8px}
   select option{color:#000}
   .link{border:0;background:none;padding:0;color:var(--accent);cursor:pointer;font-size:12px}
@@ -161,8 +168,6 @@
           <div class="item"><span>Weekly ring</span><span class="seg" id="seg-weekly"><button data-v="off">Off</button><button data-v="inside">Inside</button><button data-v="outside">Outside</button></span></div>
           <div class="item cap" id="cap-weekly" data-dynamic></div>
           <div class="item" id="row-weekly-dashed" hidden><span>Dashed weekly ring</span><button class="switch" id="sw-weekly-dashed" role="switch" aria-checked="false" aria-label="Dashed weekly ring"></button></div>
-          <div class="item"><span>Colour transition</span><span class="seg" id="seg-transition"><button data-v="hard_step">Hard step</button><button data-v="ramp">Colour ramp</button></span></div>
-          <div class="item cap" id="cap-transition" data-dynamic></div>
           <div class="item"><span>Edge</span><span class="seg" id="seg-edge"><button data-v="left">Left</button><button data-v="right">Right</button><button data-v="top">Top</button><button data-v="bottom">Bottom</button></span></div>
           <div class="item cap" id="cap-edge" data-dynamic></div>
           <div class="item"><span>Show move handle</span><button class="switch" id="sw-move" role="switch" aria-checked="false" aria-label="Show move handle"></button></div>
@@ -172,6 +177,15 @@
           </div>
           <div class="item cap" id="cap-screen" data-dynamic hidden></div>
           <div class="item"><span class="hint">Hold Alt and drag the notch to slide it along its edge. Each edge remembers where you left it. Recentre puts it back in the middle of the edge it is on, or on the main screen's right-hand edge if the screen it was on has been unplugged.</span><button class="btn" id="btn-recentre">Recentre</button></div>
+        </div>
+        <div class="sec">Usage Limits</div>
+        <div class="group">
+          <div class="item"><span>Colour transition</span><span class="seg" id="seg-transition"><button data-v="hard_step">Hard step</button><button data-v="ramp">Colour ramp</button></span></div>
+          <div class="item cap" id="cap-transition" data-dynamic></div>
+          <div class="item slider"><span>Watch limit</span><span class="value" id="val-watch" data-dynamic>50%</span><input type="range" class="range" id="range-watch" min="1" max="99" step="1" aria-label="Watch limit"></div>
+          <div class="item slider"><span>Critical limit</span><span class="value" id="val-critical" data-dynamic>70%</span><input type="range" class="range" id="range-critical" min="1" max="100" step="1" aria-label="Critical limit"></div>
+          <div class="item cap" id="cap-limits" data-dynamic hidden></div>
+          <div class="item"><span></span><button class="btn" id="btn-reset-limits">Reset to defaults</button></div>
         </div>
         <div class="sec">App</div>
         <div class="group">
@@ -250,8 +264,13 @@ const PT_BR_STATIC = {
   'Colour transition':'Transição de cor',
   'Hard step':'Degrau seco',
   'Colour ramp':'Rampa de cor',
-  'Ample, watch and critical each stay one flat colour, jumping between them at 50% and 70%.':'Verde, amarelo e vermelho permanecem cores sólidas e mudam de uma para outra em 50% e 70%.',
-  'The colour blends continuously from ample to critical across the full range, turning yellow at 50%.':'A cor muda continuamente de verde para vermelho em toda a faixa e fica amarela em 50%.',
+  'Ample, watch and critical each stay one flat colour, jumping between them at the limits below.':'Verde, amarelo e vermelho permanecem cores sólidas e mudam de uma para outra nos limites abaixo.',
+  'The colour blends continuously from ample to critical across the full range, turning yellow at the watch limit below.':'A cor muda continuamente de verde para vermelho em toda a faixa e fica amarela no limite de atenção abaixo.',
+  'Usage Limits':'Limites de uso',
+  'Watch limit':'Limite de atenção',
+  'Critical limit':'Limite crítico',
+  'Reset to defaults':'Restaurar padrões',
+  'With the colour ramp on, the ring only turns red at 100%, so the critical limit applies under Hard step.':'Com a rampa de cor ativada, o anel só fica vermelho em 100%, então o limite crítico vale no modo Degrau seco.',
   'Theme':'Tema',
   'System':'Do sistema',
   'Light':'Clara',
@@ -356,8 +375,13 @@ const RU_STATIC = {
   'Colour transition':'Переход цвета',
   'Hard step':'Резкая смена',
   'Colour ramp':'Плавный переход',
-  'Ample, watch and critical each stay one flat colour, jumping between them at 50% and 70%.':'Зелёный, жёлтый и красный остаются сплошными цветами и резко сменяются на 50% и 70%.',
-  'The colour blends continuously from ample to critical across the full range, turning yellow at 50%.':'Цвет непрерывно меняется от зелёного к красному по всей шкале и становится жёлтым на 50%.',
+  'Ample, watch and critical each stay one flat colour, jumping between them at the limits below.':'Зелёный, жёлтый и красный остаются сплошными цветами и резко сменяются на порогах ниже.',
+  'The colour blends continuously from ample to critical across the full range, turning yellow at the watch limit below.':'Цвет непрерывно меняется от зелёного к красному по всей шкале и становится жёлтым на пороге внимания ниже.',
+  'Usage Limits':'Пороги использования',
+  'Watch limit':'Порог внимания',
+  'Critical limit':'Критический порог',
+  'Reset to defaults':'Восстановить по умолчанию',
+  'With the colour ramp on, the ring only turns red at 100%, so the critical limit applies under Hard step.':'При плавном переходе кольцо краснеет только на 100%, поэтому критический порог действует в режиме «Резкая смена».',
   'Theme':'Тема',
   'System':'Системная',
   'Light':'Светлая',
@@ -429,8 +453,13 @@ const ZH_STATIC = {
   'Colour transition':'颜色过渡',
   'Hard step':'阶梯式',
   'Colour ramp':'颜色渐变',
-  'Ample, watch and critical each stay one flat colour, jumping between them at 50% and 70%.':'绿色、黄色和红色各自保持纯色，在 50% 和 70% 时跳变。',
-  'The colour blends continuously from ample to critical across the full range, turning yellow at 50%.':'颜色在整个范围内从绿色连续过渡到红色，并在 50% 时变为黄色。',
+  'Ample, watch and critical each stay one flat colour, jumping between them at the limits below.':'绿色、黄色和红色各自保持纯色，在下方的阈值处跳变。',
+  'The colour blends continuously from ample to critical across the full range, turning yellow at the watch limit below.':'颜色在整个范围内从绿色连续过渡到红色，并在下方的关注阈值处变为黄色。',
+  'Usage Limits':'用量阈值',
+  'Watch limit':'关注阈值',
+  'Critical limit':'危急阈值',
+  'Reset to defaults':'恢复默认',
+  'With the colour ramp on, the ring only turns red at 100%, so the critical limit applies under Hard step.':'开启颜色渐变后，圆环要到 100% 才变红，因此危急阈值仅在“阶梯式”下生效。',
   'Theme':'主题',
   'System':'跟随系统',
   'Light':'浅色',
@@ -533,8 +562,13 @@ const ZH_HANT_STATIC = {
   'Colour transition':'顏色過渡',
   'Hard step':'階梯式',
   'Colour ramp':'顏色漸變',
-  'Ample, watch and critical each stay one flat colour, jumping between them at 50% and 70%.':'綠色、黃色和紅色各自維持純色，並在 50% 和 70% 時跳變。',
-  'The colour blends continuously from ample to critical across the full range, turning yellow at 50%.':'顏色在整個範圍內從綠色連續過渡到紅色，並在 50% 時變為黃色。',
+  'Ample, watch and critical each stay one flat colour, jumping between them at the limits below.':'綠色、黃色和紅色各自維持純色，並在下方的閾值處跳變。',
+  'The colour blends continuously from ample to critical across the full range, turning yellow at the watch limit below.':'顏色在整個範圍內從綠色連續過渡到紅色，並在下方的關注閾值處變為黃色。',
+  'Usage Limits':'用量閾值',
+  'Watch limit':'關注閾值',
+  'Critical limit':'危急閾值',
+  'Reset to defaults':'重設為預設值',
+  'With the colour ramp on, the ring only turns red at 100%, so the critical limit applies under Hard step.':'開啟顏色漸變後，圓環要到 100% 才會變紅，因此危急閾值僅在「階梯式」下生效。',
   'Theme':'主題',
   'System':'跟隨系統',
   'Light':'淺色',
@@ -637,8 +671,13 @@ const JA_STATIC = {
   'Colour transition':'色の遷移',
   'Hard step':'段階的',
   'Colour ramp':'カラーグラデーション',
-  'Ample, watch and critical each stay one flat colour, jumping between them at 50% and 70%.':'緑、黄、赤はそれぞれ単色のままで、50% と 70% で切り替わります。',
-  'The colour blends continuously from ample to critical across the full range, turning yellow at 50%.':'色は範囲全体で緑から赤へ連続的に変化し、50% で黄色になります。',
+  'Ample, watch and critical each stay one flat colour, jumping between them at the limits below.':'緑、黄、赤はそれぞれ単色のままで、下のしきい値で切り替わります。',
+  'The colour blends continuously from ample to critical across the full range, turning yellow at the watch limit below.':'色は範囲全体で緑から赤へ連続的に変化し、下の注意のしきい値で黄色になります。',
+  'Usage Limits':'使用量のしきい値',
+  'Watch limit':'注意のしきい値',
+  'Critical limit':'危険のしきい値',
+  'Reset to defaults':'既定値に戻す',
+  'With the colour ramp on, the ring only turns red at 100%, so the critical limit applies under Hard step.':'カラーグラデーションでは、リングは 100% になるまで赤くならないため、危険のしきい値は「段階的」でのみ有効です。',
   'Theme':'テーマ',
   'System':'システムに合わせる',
   'Light':'ライト',
@@ -728,8 +767,13 @@ const KO_STATIC = {
   'Colour transition':'색상 전환',
   'Hard step':'단계식',
   'Colour ramp':'색상 그라데이션',
-  'Ample, watch and critical each stay one flat colour, jumping between them at 50% and 70%.':'녹색, 노란색, 빨간색은 각각 단색으로 유지되며 50%와 70%에서 전환됩니다.',
-  'The colour blends continuously from ample to critical across the full range, turning yellow at 50%.':'색상은 전체 범위에 걸쳐 녹색에서 빨간색으로 연속적으로 바뀌며 50%에서 노란색이 됩니다.',
+  'Ample, watch and critical each stay one flat colour, jumping between them at the limits below.':'녹색, 노란색, 빨간색은 각각 단색으로 유지되며 아래 기준에서 전환됩니다.',
+  'The colour blends continuously from ample to critical across the full range, turning yellow at the watch limit below.':'색상은 전체 범위에 걸쳐 녹색에서 빨간색으로 연속적으로 바뀌며 아래 주의 표시 기준에서 노란색이 됩니다.',
+  'Usage Limits':'사용량 표시 기준',
+  'Watch limit':'주의 표시 기준',
+  'Critical limit':'위험 표시 기준',
+  'Reset to defaults':'기본값으로 재설정',
+  'With the colour ramp on, the ring only turns red at 100%, so the critical limit applies under Hard step.':'색상 그라데이션에서는 링이 100%에서만 빨간색이 되므로, 위험 표시 기준은 \'단계식\'에서만 적용됩니다.',
   'Theme':'테마',
   'System':'시스템 따르기',
   'Light':'라이트',
@@ -834,8 +878,13 @@ const UK_STATIC = {
   'Colour transition':'Перехід кольору',
   'Hard step':'Різкий крок',
   'Colour ramp':'Кольоровий градієнт',
-  'Ample, watch and critical each stay one flat colour, jumping between them at 50% and 70%.':'Зелений, жовтий і червоний залишаються суцільними кольорами та різко змінюються на 50% і 70%.',
-  'The colour blends continuously from ample to critical across the full range, turning yellow at 50%.':'Колір безперервно переходить від зеленого до червоного в усьому діапазоні й стає жовтим на 50%.',
+  'Ample, watch and critical each stay one flat colour, jumping between them at the limits below.':'Зелений, жовтий і червоний залишаються суцільними кольорами та різко змінюються на порогах нижче.',
+  'The colour blends continuously from ample to critical across the full range, turning yellow at the watch limit below.':'Колір безперервно переходить від зеленого до червоного в усьому діапазоні й стає жовтим на порозі уваги нижче.',
+  'Usage Limits':'Пороги використання',
+  'Watch limit':'Поріг уваги',
+  'Critical limit':'Критичний поріг',
+  'Reset to defaults':'Відновити типові значення',
+  'With the colour ramp on, the ring only turns red at 100%, so the critical limit applies under Hard step.':'З кольоровим градієнтом кільце стає червоним лише на 100%, тому критичний поріг діє в режимі «Різкий крок».',
   'Theme':'Тема',
   'System':'Системна',
   'Light':'Світла',
@@ -1491,8 +1540,8 @@ document.getElementById('seg-weekly').addEventListener('click', e => {
 
 /* ---- Appearance: colour transition ---------------------------------------- */
 const TRANSITION_WHY = {
-  hard_step: 'Ample, watch and critical each stay one flat colour, jumping between them at 50% and 70%.',
-  ramp: 'The colour blends continuously from ample to critical across the full range, turning yellow at 50%.'
+  hard_step: 'Ample, watch and critical each stay one flat colour, jumping between them at the limits below.',
+  ramp: 'The colour blends continuously from ample to critical across the full range, turning yellow at the watch limit below.'
 };
 let colorTransition = 'hard_step', transitionBusy = false;
 function renderTransition(){
@@ -1504,6 +1553,7 @@ function renderTransition(){
   }
   const why = TRANSITION_WHY[colorTransition] || '';
   document.getElementById('cap-transition').textContent = ui(why, why);
+  renderLimits();
 }
 document.getElementById('seg-transition').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -1519,6 +1569,54 @@ document.getElementById('seg-transition').addEventListener('click', e => {
       return call('get_color_transition', undefined, null).then(v => { if(typeof v === 'string') colorTransition = v; });
     })
     .then(() => { transitionBusy = false; renderTransition(); });
+});
+
+/* ---- Appearance: usage limits --------------------------------------------- */
+// Unlike the Mac, nothing else on Windows reads the critical limit, so under the ramp it does nothing.
+const LIMITS_RAMP_WHY = 'With the colour ramp on, the ring only turns red at 100%, so the critical limit applies under Hard step.';
+let watchLimit = 0.5, criticalLimit = 0.7;
+const pctOf = f => Math.round(f * 100);
+// The track's accent fill runs to the thumb; CSS cannot read an input's value, so it is handed over
+function paintFill(el){ el.style.setProperty('--f', (el.value - el.min) / (el.max - el.min)); }
+new ResizeObserver(([e]) => {
+  const w = e.target.offsetWidth;
+  if(w) document.documentElement.style.setProperty('--slider-w', w + 'px');
+}).observe(document.getElementById('seg-transition'));
+function renderLimits(){
+  const w = document.getElementById('range-watch'), c = document.getElementById('range-critical');
+  w.value = pctOf(watchLimit); paintFill(w);
+  c.value = pctOf(criticalLimit); paintFill(c);
+  document.getElementById('val-watch').textContent = pctOf(watchLimit) + '%';
+  document.getElementById('val-critical').textContent = pctOf(criticalLimit) + '%';
+  const cap = document.getElementById('cap-limits');
+  cap.hidden = colorTransition !== 'ramp';
+  cap.textContent = ui(LIMITS_RAMP_WHY, LIMITS_RAMP_WHY);
+}
+function sendLimit(setCmd, getCmd, pct, apply){
+  invoke(setCmd, { value: pct / 100 })
+    .then(v => { if(typeof v === 'number') apply(v); toast(); })
+    .catch(err => {
+      strip(setCmd + ' failed: ' + errText(err));
+      return call(getCmd, undefined, null).then(v => { if(typeof v === 'number') apply(v); });
+    })
+    .then(renderLimits);
+}
+for(const [id, label] of [['range-watch', 'val-watch'], ['range-critical', 'val-critical']]){
+  document.getElementById(id).addEventListener('input', e => {
+    document.getElementById(label).textContent = e.target.value + '%';
+    paintFill(e.target);
+  });
+}
+// Sent on release, not on every step of a drag: each one saves the config and redraws the notch.
+document.getElementById('range-watch').addEventListener('change', e =>
+  sendLimit('set_watch_limit', 'get_watch_limit', +e.target.value, v => { watchLimit = v; }));
+document.getElementById('range-critical').addEventListener('change', e =>
+  sendLimit('set_critical_limit', 'get_critical_limit', +e.target.value, v => { criticalLimit = v; }));
+document.getElementById('btn-reset-limits').addEventListener('click', () => {
+  invoke('reset_usage_limits')
+    .then(v => { if(Array.isArray(v)){ watchLimit = v[0]; criticalLimit = v[1]; } toast(); })
+    .catch(err => strip('reset_usage_limits failed: ' + errText(err)))
+    .then(renderLimits);
 });
 
 /* ---- Appearance: position ------------------------------------------------ */
@@ -1629,6 +1727,8 @@ function boot(){
   refreshScreens();
   call('get_weekly_ring', undefined, null).then(v => { if(typeof v === 'string') weeklyRing = v; renderWeekly(); });
   call('get_color_transition', undefined, null).then(v => { if(typeof v === 'string') colorTransition = v; renderTransition(); });
+  call('get_watch_limit', undefined, null).then(v => { if(typeof v === 'number') watchLimit = v; renderLimits(); });
+  call('get_critical_limit', undefined, null).then(v => { if(typeof v === 'number') criticalLimit = v; renderLimits(); });
   call('get_theme', undefined, null).then(v => { if(typeof v === 'string') theme = v; renderTheme(); });
   call('get_theme_resolved', undefined, null).then(v => { if(typeof v === 'string') applyTheme(v); });
   call('get_ui_flags', undefined, null).then(v => { if(v && typeof v === 'object') flags = readFlags(v); renderFlags(); });

@@ -314,10 +314,9 @@ function applyTheme(name){
 invoke('get_theme_resolved').then(applyTheme).catch(()=>{});
 listen('theme_resolved',e=>applyTheme(e.payload)).catch(()=>{});
 let colorTransition='hard_step';
-const stepTone=f=> f>=0.7?CRIT : f>=0.5?WATCH : AMPLE;
-// A continuous sRGB ramp across the whole range: the Windows watch cut has always been 50%, so
-// this is a named equivalence rather than a magic number. Windows has no watch-limit slider.
-const WATCH_AT=0.5;
+// Settings' own sliders; a page opened before either invoke resolves draws with the Mac's defaults.
+let watchLimit=0.5, criticalLimit=0.7;
+const stepTone=f=> f>=criticalLimit?CRIT : f>=watchLimit?WATCH : AMPLE;
 function hex3(c){ const n=parseInt(c.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
 function lerpHex(a,b,t){
   const A=hex3(a), B=hex3(b);
@@ -326,8 +325,8 @@ function lerpHex(a,b,t){
 }
 const rampTone=f=>{
   f=Math.max(0,Math.min(1,f));
-  if(f<WATCH_AT) return lerpHex(AMPLE,WATCH,f/WATCH_AT);
-  return lerpHex(WATCH,CRIT,(f-WATCH_AT)/(1-WATCH_AT));
+  if(f<watchLimit) return lerpHex(AMPLE,WATCH,f/watchLimit);
+  return lerpHex(WATCH,CRIT,(f-watchLimit)/(1-watchLimit));
 };
 const tone=f=> colorTransition==='ramp'?rampTone(f):stepTone(f);
 // Whole percents, except where rounding would read as nothing used or nothing left, as the Mac's Percent does
@@ -1633,6 +1632,10 @@ invoke('get_color_transition').then(v=>{if(typeof v==='string'){colorTransition=
 listen('color_transition',e=>{if(typeof e.payload==='string'){colorTransition=e.payload;renderRing();}}).catch(()=>{});
 invoke('get_weekly_ring_dashed').then(v=>{if(typeof v==='boolean'){weeklyRingDashed=v;renderRing();}}).catch(()=>{});
 listen('weekly_ring_dashed',e=>{if(typeof e.payload==='boolean'){weeklyRingDashed=e.payload;renderRing();}}).catch(()=>{});
+invoke('get_watch_limit').then(v=>{if(typeof v==='number'){watchLimit=v;renderRing();}}).catch(()=>{});
+listen('watch_limit',e=>{if(typeof e.payload==='number'){watchLimit=e.payload;renderRing();}}).catch(()=>{});
+invoke('get_critical_limit').then(v=>{if(typeof v==='number'){criticalLimit=v;renderRing();}}).catch(()=>{});
+listen('critical_limit',e=>{if(typeof e.payload==='number'){criticalLimit=e.payload;renderRing();}}).catch(()=>{});
 listen('antigravity_prefs',e=>{if(e.payload){agPrefs=e.payload;renderRing();}}).catch(()=>{});
 listen('glyphs',e=>{glyphs=e.payload||glyphs;renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
 listen('activity',e=>{activity=e.payload||activity;renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
