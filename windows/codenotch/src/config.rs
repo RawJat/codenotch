@@ -114,6 +114,10 @@ pub struct Config {
     /// (backdrop.rs). Opt-in for that reason; off, the pill takes Theme's colour.
     #[serde(default)]
     pub adaptive_pill: bool,
+    /// true = the notch folds to its pill while a full-screen app is in front on its screen, as the
+    /// Mac's does, and hovering it still opens it. Off, it stays as Show has it.
+    #[serde(default = "yes")]
+    pub fold_for_full_screen: bool,
 }
 
 fn default_notch_y() -> f64 {
@@ -268,6 +272,7 @@ impl Default for Config {
             tray_visible: true,
             show_move_handle: true,
             adaptive_pill: false,
+            fold_for_full_screen: true,
         }
     }
 }
