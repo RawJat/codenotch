@@ -55,6 +55,7 @@ pub fn tell(app: &AppHandle) {
     }
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, PartialEq)]
 enum Reading {
     Full(Rect),
@@ -64,6 +65,7 @@ enum Reading {
     Unchanged,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn same_rect(window: Rect, monitor: Rect) -> bool {
     let (a, b) = (window, monitor);
     (a.0 - b.0).abs() <= SLACK && (a.1 - b.1).abs() <= SLACK && (a.2 - b.2).abs() <= SLACK && (a.3 - b.3).abs() <= SLACK
@@ -71,6 +73,7 @@ fn same_rect(window: Rect, monitor: Rect) -> bool {
 
 /// `maximised`: zoomed and captioned. With the taskbar set to auto-hide, an ordinary maximised
 /// window is monitor-sized too, and folding for it is what the Mac's #181 was about.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn classify(class: &str, notch: bool, window: Rect, monitor: Rect, maximised: bool) -> Reading {
     if notch || matches!(class, "XamlExplorerHostIslandWindow" | "MultitaskingViewFrame" | "TaskSwitcherWnd" | "ForegroundStaging") {
         return Reading::Unchanged;
@@ -87,12 +90,13 @@ fn classify(class: &str, notch: bool, window: Rect, monitor: Rect, maximised: bo
 }
 
 #[cfg(windows)]
-fn read(notch: Option<isize>) -> Reading {
+fn read(app: &AppHandle) -> Reading {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONULL};
     use windows::Win32::UI::WindowsAndMessaging::{
         GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, IsZoomed, GWL_STYLE, WS_CAPTION,
     };
+    let notch = app.get_webview_window("notch").and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize);
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_invalid() {
@@ -124,15 +128,14 @@ fn read(notch: Option<isize>) -> Reading {
 }
 
 #[cfg(not(windows))]
-fn read(_notch: Option<isize>) -> Reading {
+fn read(_app: &AppHandle) -> Reading {
     Reading::Unchanged
 }
 
 pub fn start(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(POLL);
-        let notch = app.get_webview_window("notch").and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize);
-        match read(notch) {
+        match read(&app) {
             Reading::Full(m) => *FILLED.lock().unwrap() = Some(m),
             Reading::Windowed => *FILLED.lock().unwrap() = None,
             Reading::Unchanged => {}
