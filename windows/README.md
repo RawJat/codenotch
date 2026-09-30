@@ -17,6 +17,7 @@ documented behaviour and the wire formats.
 | **Codex** | The local Codex sign-in in `~/.codex/auth.json` (read only, never refreshed), falling back to the newest session snapshot | Live primary/secondary windows (5h + weekly on paid plans, a monthly window on free) while Codex is signed in; Spark and Code review appear on the hover card when Codex reports them; otherwise the last snapshot, marked stale by its own timestamp. |
 | **Cursor** | The editor's own session from `state.vscdb` → `cursor.com/api/usage-summary` | Included usage / API usage / on-demand, reset at billing-cycle end. Nothing to sign into: it borrows the editor's session, so there is only ever one account. |
 | **Grok** | The Grok CLI's own session in `~/.grok/auth.json` (read only, never refreshed) → `cli-chat-proxy.grok.com/v1/billing?format=credits`, the endpoint that CLI's own `/usage` asks | The weekly Grok Build allowance, with the account on the hover card. Only a session minted by `auth.x.ai` is used — the file can also hold a customer IdP token meant for that customer's private proxy. A fresh weekly period reads 0 %, not "unmetered". |
+| **GitHub Copilot** | The GitHub CLI's own session, read only: `GH_TOKEN`/`GITHUB_TOKEN` when set, else `oauth_token` in `%APPDATA%\GitHub CLI\hosts.yml`, else `gh auth token` run hidden (the token may live in Credential Manager) → `api.github.com/copilot_internal/user`, the quota endpoint GitHub's own editors ask | Premium requests on the ring, with chat requests and completions on the hover card; all reset on the first of the month. An `unlimited` quota, or one with no entitlement, draws nothing. The account and plan are named on the card. Sign in with `gh auth login`; Codenotch never starts a sign-in itself. |
 | **OpenCode** | OpenCode's own sign-in, read only: the `opencode-go` key in `~/.local/share/opencode/auth.json` → `opencode.ai/zen/go/v1/usage`, or — since OpenCode 1.18 — the OAuth sign-in in `opencode.db` (`credential` table) → `opencode.ai/inference/go/v1/usage` | The Go plan's 5-hour, weekly and monthly windows. A sign-in without a Go plan shows "No OpenCode Go subscription" instead of a ring; Zen pay-as-you-go credit has no balance or usage API, so it is not shown. |
 | **Antigravity** | Official `agy` CLI `/usage` print when installed; otherwise the existing local `language_server` bridge, Google Cloud Code API, or transcript model count | Official four quota rows (Gemini & Claude/GPT 5h/weekly) without running the full IDE. When CLI is absent, falls back to legacy local bridge/API. |
 | **OpenCode Go** | `GET https://opencode.ai/zen/go/v1/usage` | Reads the `opencode-go` key in OpenCode's `auth.json`, or `OPENCODE_APIKEY` when set. The environment key takes precedence. Shows rolling 5-hour, weekly and monthly usage. This is a separate subscription from the Z.ai GLM Coding Plan; its key must not be sent to Z.ai's monitor endpoint. |
@@ -102,17 +103,18 @@ first time with *Windows protected your PC*: choose **More info**, then **Run an
 ### Updates
 
 Codenotch looks for a newer release about twenty seconds after it starts, and again whenever
-**Check for updates** is pressed in Settings → General. The feed is `latest.json` on the newest
-release, written by the Windows Package workflow beside the installer it describes, so publishing
-a release is the whole of shipping an update.
+**Check for updates** is pressed in Settings → General. It compares the installed version with
+GitHub's latest release and confirms that release carries a Windows installer. When the maintainer
+has published a signed `latest.json` feed for that same version, **Update** downloads and installs
+it through Tauri. Otherwise **Download installer** opens the official GitHub asset for you to run.
 
-Nothing about this nags. A check that fails — no network, an unreachable feed — leaves the app
-as it was and says so only next to the version. There is no dialogue and no badge.
+Nothing about this nags. A check that fails — no network or no Windows installer yet — leaves the
+app as it was and says so next to the version. Before the first completed check, the page makes
+no "Up to date" claim. There is no dialogue and no badge.
 
-The download is a minisign-signed archive, and the signature is checked against the public key in
-`tauri.conf.json` before anything is run. This is what stands in for code signing here: the
-installer itself is unsigned, so SmartScreen still warns on a first manual install, but an update
-delivered to an already-installed copy is verified.
+Automatic updates use a minisign-signed archive; Tauri checks its signature against the public
+key in `tauri.conf.json` before running it. The manually downloaded installer is unsigned, so
+SmartScreen may warn, as it does for a first installation.
 
 Before the first signed release, the key has to exist:
 
@@ -123,9 +125,9 @@ npx --yes @tauri-apps/cli@2.11.4 signer generate -w $env:USERPROFILE\.tauri\code
 Put the **private** key in the repository secret `TAURI_SIGNING_PRIVATE_KEY` and its password in
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and paste the **public** key into `plugins.updater.pubkey`
 in `codenotch/tauri.conf.json`, replacing `REPLACE_WITH_TAURI_PUBLIC_KEY`. Until that is done the
-app skips the check entirely rather than reporting a failure nobody can act on; the packaging job
-builds an ordinary installer and warns that it made no feed, and a `v*` release fails loudly rather
-than going out with an update path nobody can use.
+app still checks GitHub releases and offers the manual installer. The packaging job builds an
+ordinary installer without a signed feed, and a `v*` release job fails to flag the missing signing
+configuration to the maintainer.
 
 Keep the private key. Losing it means no installed copy can be updated again, because every one of
 them checks against the public key it shipped with — they would all have to reinstall by hand.
@@ -148,6 +150,46 @@ cd codenotch
 npx @tauri-apps/cli@2 build --config tauri.bundle.conf.json
 # → ..\target\release\bundle\nsis\Codenotch_<version>_x64-setup.exe
 ```
+
+### Linux
+
+The same crate builds and runs on Linux; the Win32 pieces already sat behind `cfg(windows)`,
+and the rest of the port is portable Rust. Prerequisites on a Debian or Ubuntu machine:
+
+```sh
+sudo apt install build-essential pkg-config libssl-dev libwebkit2gtk-4.1-dev \
+                 libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+cargo build --release -p codenotch
+./scripts/run-linux.sh          # pill appears on the right edge
+./scripts/run-linux.sh doctor   # self-diagnosis, same as on Windows
+```
+
+`scripts/run-linux.sh` exists because of two things the desktop does not do by itself.
+**Wayland does not let a client place its own windows**, and the notch has to sit on a
+screen edge, so it runs as an X11 client under XWayland. And a shell started from a
+**snap** — Ubuntu's VS Code, for one — exports that snap's library paths, which make a
+binary built against the system glibc die with
+`symbol lookup error: … undefined symbol: __libc_pthread_init`. The script unsets those
+and sets `GDK_BACKEND=x11`; launched from the desktop rather than such a shell, the
+binary runs on its own.
+
+The tray needs GNOME's *AppIndicator Support* extension, as every Tauri tray does there.
+The data folder follows the XDG directories (`~/.config/codenotch`), and providers are
+found at their Linux paths: `~/.claude`, `~/.codex`, `~/.grok`,
+`~/.config/Cursor/User/globalStorage/state.vscdb`.
+
+What does not work yet, and degrades quietly rather than misbehaving:
+
+| Feature | Why |
+|---|---|
+| Dragging the pill along its edge | Follows the mouse through `GetAsyncKeyState`; needs an X11 pointer query. |
+| Seen-clears-it, and jumping back to the terminal | `focus.rs` reads the foreground window and the process tree through Toolhelp; `/proc` plus a window-manager call would replace it. |
+| Antigravity | Its credential is read from the Windows Credential Manager; libsecret is the equivalent. |
+| App icons taken from an installed `.exe` | The built-in provider SVGs cover every provider, so little is lost. |
+
+Everything else — all providers, the hover card, the settings window, the tray menu, hooks,
+start at sign-in (an XDG autostart entry rather than a registry value) — behaves as it does
+on Windows.
 
 Tray menu: the readings themselves — a line per provider with its headline figure, and under it
 one line per limit window — then **Refresh all**, **Settings…** and **Quit Codenotch**. Clicking a

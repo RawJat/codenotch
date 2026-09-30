@@ -91,7 +91,8 @@ final class ResetCopyTests: XCTestCase {
     func testRemainingFormatAndRoundingBoundaries() {
         let cases: [(TimeInterval, String)] = [
             (-5, "Resetting…"), (0, "Resetting…"),
-            (1, "Resets in 1 min"),
+            (1, "Resets in 1 sec"),
+            (42, "Resets in 42 sec"),
             (50 * 60 + 40, "Resets in 51 min"),
             (59 * 60 + 40, "Resets in 1h 0m"),
             (3 * 3600 + 20 * 60, "Resets in 3h 20m"),
@@ -107,13 +108,14 @@ final class ResetCopyTests: XCTestCase {
     }
 
     /// The menu bar's countdown truncates where `text` rounds: it is read
-    /// against a clock, so it never claims time that is not left — "<1m" is
-    /// under a minute, and "1h 00m" is gone the moment the hour is. Minutes
-    /// carry two digits beside hours so the width holds as they tick over.
+    /// against a clock, so it never claims time that is not left — "09s" is at
+    /// least nine seconds, and "1h 00m" is gone the moment the hour is. Seconds
+    /// and minutes both carry two digits beside what follows them, so the width
+    /// holds as they tick over.
     func testCountdownBoundaries() {
         let cases: [(TimeInterval, String?)] = [
             (-30, nil), (0, nil),
-            (1, "<1m"), (59, "<1m"),
+            (0.5, "00s"), (1, "01s"), (9.9, "09s"), (42, "42s"), (59, "59s"), (59.9, "59s"),
             (60, "1m"), (8 * 60 + 3, "8m"), (47 * 60 + 50, "47m"), (59 * 60 + 59, "59m"),
             (3600, "1h 00m"), (2 * 3600 + 5 * 60, "2h 05m"), (2 * 3600 + 18 * 60 + 20, "2h 18m"),
             (4 * 3600 + 59 * 60 + 59, "4h 59m"), (5 * 3600, "5h 00m"),
@@ -121,6 +123,28 @@ final class ResetCopyTests: XCTestCase {
         for (seconds, expected) in cases {
             XCTAssertEqual(ResetCopy.countdown(to: now.addingTimeInterval(seconds), now: now),
                            expected, "\(seconds)s left")
+        }
+    }
+
+    /// The one figure "<1m" could not tell you: which of the fifty-nine seconds
+    /// it was. The last minute of a window is the minute somebody is watching
+    /// the bar through, so it counts down through it.
+    func testTheLastMinuteCountsInSeconds() {
+        let readings = [59, 30, 5, 1].map { seconds in
+            ResetCopy.countdown(to: now.addingTimeInterval(TimeInterval(seconds)), now: now)
+        }
+        XCTAssertEqual(readings, ["59s", "30s", "05s", "01s"])
+        XCTAssertEqual(Set(readings).count, readings.count, "the last minute reads the same throughout")
+    }
+
+    /// A five-hour window wakes the menu bar once a minute for four hours and
+    /// fifty-nine of them, and once a second for the last sixty. Nothing else
+    /// decides how often the item is redrawn, so the step is worth pinning.
+    func testTheCountdownStepsByMinutesUntilTheLastOne() throws {
+        for (seconds, step) in [(5 * 3600, 60.0), (61, 60.0), (60, 1.0), (42, 1.0), (1, 1.0)] {
+            let resetsAt = now.addingTimeInterval(TimeInterval(seconds))
+            let change = try XCTUnwrap(ResetCopy.nextCountdownChange(to: resetsAt, now: now))
+            XCTAssertLessThanOrEqual(change.timeIntervalSince(now), step, "\(seconds)s left")
         }
     }
 

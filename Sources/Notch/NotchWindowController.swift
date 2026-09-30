@@ -18,6 +18,11 @@ final class NotchWindowController {
 
     /// Hooked up by the app delegate; drives the menu's "Refresh now".
     var onRefresh: (() -> Void)?
+    /// The notch has just opened, or a ring has just been pointed at — so the
+    /// numbers on it are about to be read. Distinct from `onRefresh`, which is
+    /// **Refresh now** and always fetches; this one may decide it has fetched
+    /// recently enough. See `UsageStore.refreshBecauseSomeoneIsLooking`.
+    var onLook: (() -> Void)?
     /// One "Sign in to …" item per provider that needs a browser session.
     var signInItems: [(title: String, action: () -> Void)] = []
     /// Driven by the notch's own chrome.
@@ -219,8 +224,14 @@ final class NotchWindowController {
         .store(in: &cancellables)
 
         model.$hoveredIndex
-            .sink { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateInteractiveRects() }
+            .sink { [weak self] index in
+                MainActor.assumeIsolated {
+                    self?.updateInteractiveRects()
+                    // The card that is coming up is the one place every window,
+                    // percentage and reset time is written out, and on a notch
+                    // held open there is no unfold to notice instead.
+                    if index != nil { self?.onLook?() }
+                }
             }
             .store(in: &cancellables)
 
@@ -1483,6 +1494,7 @@ final class NotchWindowController {
             if model.handlesTuckedAway { model.handlesTuckedAway = false }
             guard !model.isExpanded else { return }
             withAnimation(NotchMotion.unfold) { model.isExpanded = true }
+            onLook?()
             return
         }
 
@@ -1996,11 +2008,34 @@ final class NotchWindowController {
 
     private func startClock() {
         // Keeps "Resets in N min" from going stale while the tooltip is open.
-        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.model.now = Date() }
+        //
+        // Once a second, where it used to be once every thirty. A card open on
+        // "Resets in 12 min" was up to half a minute behind the clock it is read
+        // against, and inside the last minute — where the copy now counts in
+        // seconds — thirty seconds is most of what is left. What keeps that
+        // cheap is `tickClock`: a second is only *published* when something on
+        // screen counts in them.
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tickClock() }
         }
+        timer.tolerance = 0.1
         RunLoop.main.add(timer, forMode: .common)
         clockTimer = timer
+    }
+
+    /// Publishes the time to the view, as often as the view has a use for it.
+    ///
+    /// `model.now` is `@Published` and every card is drawn against it, so
+    /// setting it is a SwiftUI update of the whole notch. That is worth doing
+    /// every second while a card is open and being read, and worth doing at the
+    /// old thirty-second pace when the notch is folded away — nothing on a
+    /// collapsed notch is measured in seconds, so redrawing one every second for
+    /// the rest of the day buys nobody anything.
+    private func tickClock() {
+        let now = Date()
+        let readsAsClock = model.isExpanded || model.hoveredIndex != nil
+        guard readsAsClock || now.timeIntervalSince(model.now) >= 30 else { return }
+        model.now = now
     }
 
     private func contextMenu() -> NSMenu {

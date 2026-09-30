@@ -107,7 +107,7 @@
 
   /* Hover card, shown to the left of the pill */
   #card{
-    position:absolute;left:10px;right:100px;top:50%;transform:translateY(-50%);
+    position:absolute;left:5px;right:108.7px;top:50%;transform:translateY(-50%);
     /* Anchored on both sides = fluid width: whatever the WebView's real logical width, the card cannot
        extend past the window's left edge (a fixed max-width got clipped when the DPI disagreed).
        The 246 cap matches the upstream spec. */
@@ -119,11 +119,12 @@
   #card.show{display:block}
   /* The tail, its point on the hovered ring: the Mac's curved wedge (TooltipTail), whose shoulders
      leave the card tangent to its edge so the two read as one shape. An element of its own rather
-     than ::after, so the card's overflow cannot clip it and it can be reported as hot. It spans the
-     whole gap, its tip tucked 1 px under the pill's edge so the two meet. */
+     than ::after, so the card's overflow cannot clip it and it can be reported as hot. The Mac's
+     size, 28.2 long and 32.7 across (NotchLayout.tailLength, tailHeight), its tip stopping 10.5
+     short of the pill (tailGap): hence the card's 108.7 = the pill's 70 + 10.5 + 28.2. */
   #tail{
-    position:absolute;right:69px;width:32px;height:36px;background:var(--card);display:none;
-    clip-path:path('M0 0C0 9 18.56 13.68 32 18C18.56 22.32 0 27 0 36Z');
+    position:absolute;right:80.5px;width:28.2px;height:32.7px;background:var(--card);display:none;
+    clip-path:path('M0 0C0 8.18 16.36 12.43 28.2 16.36C16.36 20.29 0 24.54 0 32.72Z');
   }
   #card.show + #tail{display:block}
   .c-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
@@ -159,8 +160,8 @@
   body[data-edge="left"] #pill::before,body[data-edge="left"] #pill::after{right:auto;left:0}
   body[data-edge="left"] #pill::before{background:radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--pill) calc(var(--fillet) + 0.5px))}
   body[data-edge="left"] #pill::after{background:radial-gradient(circle at 100% 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--pill) calc(var(--fillet) + 0.5px))}
-  body[data-edge="left"] #card{left:100px;right:10px;margin-left:0;margin-right:auto}
-  body[data-edge="left"] #tail{right:auto;left:69px;clip-path:path('M32 0C32 9 13.44 13.68 0 18C13.44 22.32 32 27 32 36Z')}
+  body[data-edge="left"] #card{left:108.7px;right:5px;margin-left:0;margin-right:auto}
+  body[data-edge="left"] #tail{right:auto;left:80.5px;clip-path:path('M28.2 0C28.2 8.18 11.84 12.43 0 16.36C11.84 20.29 28.2 24.54 28.2 32.72Z')}
 
   /* Top and bottom: the pill lies flat, so it is a row and its thickness comes from the cells rather
      than a fixed 70 px column. The card is centred under (or over) the hovered ring by `placeCard`. */
@@ -182,9 +183,9 @@
     left:8px;right:auto;top:0;transform:none;margin-left:0;
     width:246px;max-height:calc(100% - 150px);
   }
-  body[data-edge="top"] #tail,body[data-edge="bottom"] #tail{right:auto;width:36px;height:32px}
-  body[data-edge="top"] #tail{clip-path:path('M0 32C9 32 13.68 13.44 18 0C22.32 13.44 27 32 36 32Z')}
-  body[data-edge="bottom"] #tail{clip-path:path('M0 0C9 0 13.68 18.56 18 32C22.32 18.56 27 0 36 0Z')}
+  body[data-edge="top"] #tail,body[data-edge="bottom"] #tail{right:auto;width:32.7px;height:28.2px}
+  body[data-edge="top"] #tail{clip-path:path('M0 28.2C8.18 28.2 12.43 11.84 16.36 0C20.29 11.84 24.54 28.2 32.72 28.2Z')}
+  body[data-edge="bottom"] #tail{clip-path:path('M0 0C8.18 0 12.43 16.36 16.36 28.2C20.29 16.36 24.54 0 32.72 0Z')}
 
   /* Show on hover, the Mac's .onHover: folded, the notch rests as a small pill at the edge. Its size is
      the Mac's NotchLayout.pillWidth × pillHeight, 26 × 210 of its design px — 10 × 79 of this page's,
@@ -314,10 +315,9 @@ function applyTheme(name){
 invoke('get_theme_resolved').then(applyTheme).catch(()=>{});
 listen('theme_resolved',e=>applyTheme(e.payload)).catch(()=>{});
 let colorTransition='hard_step';
-const stepTone=f=> f>=0.7?CRIT : f>=0.5?WATCH : AMPLE;
-// A continuous sRGB ramp across the whole range: the Windows watch cut has always been 50%, so
-// this is a named equivalence rather than a magic number. Windows has no watch-limit slider.
-const WATCH_AT=0.5;
+// Settings' own sliders; a page opened before either invoke resolves draws with the Mac's defaults.
+let watchLimit=0.5, criticalLimit=0.7;
+const stepTone=f=> f>=criticalLimit?CRIT : f>=watchLimit?WATCH : AMPLE;
 function hex3(c){ const n=parseInt(c.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
 function lerpHex(a,b,t){
   const A=hex3(a), B=hex3(b);
@@ -326,8 +326,8 @@ function lerpHex(a,b,t){
 }
 const rampTone=f=>{
   f=Math.max(0,Math.min(1,f));
-  if(f<WATCH_AT) return lerpHex(AMPLE,WATCH,f/WATCH_AT);
-  return lerpHex(WATCH,CRIT,(f-WATCH_AT)/(1-WATCH_AT));
+  if(f<watchLimit) return lerpHex(AMPLE,WATCH,f/watchLimit);
+  return lerpHex(WATCH,CRIT,(f-watchLimit)/(1-watchLimit));
 };
 const tone=f=> colorTransition==='ramp'?rampTone(f):stepTone(f);
 // Whole percents, except where rounding would read as nothing used or nothing left, as the Mac's Percent does
@@ -354,6 +354,8 @@ let codexSnap={status:'absent',windows:[],fetched_at:0,note:''};
 let cursorSnap={status:'absent',windows:[],fetched_at:0,note:''};
 // Grok Build credits, from the Grok CLI's own session; absent until that CLI is signed in
 let grokSnap={status:'absent',windows:[],fetched_at:0,note:''};
+// GitHub Copilot quotas, from the GitHub CLI's own session; absent until gh is installed or a token is set
+let copilotSnap={status:'absent',windows:[],fetched_at:0,note:''};
 let glmSnap={status:'absent',windows:[],fetched_at:0,note:''};
 // OpenCode Go plan, read with OpenCode's own sign-in; absent until OpenCode is installed
 let opencodeSnap={status:'absent',windows:[],fetched_at:0,note:''};
@@ -449,6 +451,10 @@ const TEXT={
     'Unable to open Claude sign-in window.':'Claude 로그인 창을 열 수 없습니다.',
     'Claude HTTP 403: access denied. Check network or account access; sign-in may still be valid.':'Claude HTTP 403: 접근이 거부되었습니다. 네트워크나 계정의 접근 권한을 확인하십시오. 로그인은 여전히 유효할 수 있습니다.',
     'Run grok login to see usage.':'사용량을 확인하려면 grok login을 실행하십시오.',
+    'Run gh auth login to see usage.':'사용량을 확인하려면 gh auth login을 실행하십시오.',
+    'Premium requests':'프리미엄 요청',
+    'Chat requests':'채팅 요청',
+    'Completions':'코드 완성',
   },
   'pt-BR':{
     'Included usage':'Uso incluído',
@@ -500,6 +506,10 @@ const TEXT={
     'Sign in to Codex to see usage.':'Entre no Codex para ver o uso.',
     'Sign in to Antigravity to see usage.':'Entre no Antigravity para ver o uso.',
     'Run grok login to see usage.':'Execute grok login para ver o uso.',
+    'Run gh auth login to see usage.':'Execute gh auth login para ver o uso.',
+    'Premium requests':'Solicitações premium',
+    'Chat requests':'Solicitações de chat',
+    'Completions':'Conclusões de código',
     'Run opencode auth login to see usage.':'Execute opencode auth login para ver o uso.',
     'No OpenCode Go subscription on this account':'Nenhuma assinatura do OpenCode Go nesta conta',
     'needs your input':'precisa da sua resposta',
@@ -589,6 +599,10 @@ const TEXT={
     'Sign in to Codex to see usage.':'Войдите в Codex, чтобы увидеть использование.',
     'Sign in to Antigravity to see usage.':'Войдите в Antigravity, чтобы увидеть использование.',
     'Run grok login to see usage.':'Выполните grok login, чтобы увидеть использование.',
+    'Run gh auth login to see usage.':'Выполните gh auth login, чтобы увидеть использование.',
+    'Premium requests':'Премиум-запросы',
+    'Chat requests':'Запросы чата',
+    'Completions':'Автодополнения',
     'needs your input':'требуется ваш ответ',
     'Working in':'Работает в'
   },
@@ -628,6 +642,10 @@ const TEXT={
     'Sign in to Codex to see usage.':'请登录 Codex 以查看用量。',
     'Sign in to Antigravity to see usage.':'请登录 Antigravity 以查看用量。',
     'Run grok login to see usage.':'请运行 grok login 以查看用量。',
+    'Run gh auth login to see usage.':'请运行 gh auth login 以查看用量。',
+    'Premium requests':'高级请求',
+    'Chat requests':'聊天请求',
+    'Completions':'代码补全',
     'needs your input':'等待你的输入',
     'Working in':'工作于',
   },
@@ -667,6 +685,10 @@ const TEXT={
     'Sign in to Codex to see usage.':'請登入 Codex 以查看用量。',
     'Sign in to Antigravity to see usage.':'請登入 Antigravity 以查看用量。',
     'Run grok login to see usage.':'請執行 grok login 以查看用量。',
+    'Run gh auth login to see usage.':'請執行 gh auth login 以查看用量。',
+    'Premium requests':'進階請求',
+    'Chat requests':'聊天請求',
+    'Completions':'程式碼補全',
     'needs your input':'等待你的輸入',
     'Working in':'工作於',
   },
@@ -1009,6 +1031,7 @@ function providers(){
   if(opencodeSnap.status!=='absent') list.push({id:'opencode',base:'opencode',name:'OpenCode',glyph:'OC',snap:opencodeSnap});
   if(cursorSnap.status!=='absent') list.push({id:'cursor',base:'cursor',name:'Cursor',glyph:'Cu',snap:cursorSnap});
   if(grokSnap.status!=='absent') list.push({id:'grok',base:'grok',name:'Grok',glyph:'Gk',snap:grokSnap});
+  if(copilotSnap.status!=='absent') list.push({id:'copilot',base:'copilot',name:'GitHub Copilot',glyph:'Cp',snap:copilotSnap});
   if(agSnap.status!=='absent') list.push({id:'gemini',base:'gemini',name:'Antigravity',glyph:'Ag',snap:agSnap});
   if(Array.isArray(notchSlots)&&notchSlots.length){
     const picked=list.filter(p=>!!slotFor(p.base));
@@ -1022,6 +1045,7 @@ function providers(){
 let agPrefs={limit:'automatic',model:'gemini'};
 // Where the weekly limit's own ring goes, from settings: 'off', 'inside' or 'outside'
 let weeklyRing='off';
+let weeklyRingDashed=false;
 // The tightest metered window, ties going to the lower id so the choice never flickers
 function tightestOf(ws){
   return ws.filter(w=>w.count==null).reduce((a,b)=>!a||b.used>a.used||(b.used===a.used&&b.id<a.id)?b:a,null);
@@ -1040,6 +1064,7 @@ function headlineOf(snap,id){
   if(id==='codex') return byId('primary');
   if(id==='cursor') return byId('included')||byId('api');
   if(id==='grok') return byId('credits')||ws[0];
+  if(id==='copilot') return byId('premium_interactions')||ws[0];
   if(id==='glm') return byId('session');
   if(id==='opencode') return byId('rolling');
   const fam=ws.filter(w=>laneFamily(w)===agPrefs.model), lanes=fam.length?fam:ws;
@@ -1057,6 +1082,7 @@ function weeklyOf(snap,id){
   if(id==='codex') return byId('secondary');
   if(id==='cursor') return null;
   if(id==='grok') return null; // the credits window is already the weekly one
+  if(id==='copilot') return null; // monthly quotas only; nothing weekly to draw
   if(id==='glm') return byId('weekly');
   if(id==='opencode') return byId('weekly');
   const fam=ws.filter(w=>laneFamily(w)===agPrefs.model), lanes=fam.length?fam:ws;
@@ -1078,6 +1104,23 @@ function svgArc(r,frac,color,width,extra=''){
   const C=2*Math.PI*r;
   return `<circle cx="28" cy="28" r="${r}" fill="none" stroke="${color}" stroke-width="${width}"
     stroke-dasharray="${(C*frac).toFixed(2)} ${C.toFixed(2)}" stroke-linecap="round"
+    transform="rotate(-90 28 28)" ${extra}/>`;
+}
+
+// svgArc's sweep drawn as the Mac's dashed weekly ring: 4-on 2-off butt-capped ticks. A circle has
+// one dasharray, and svgArc spends it on cropping to `frac`, so the ticks are spelled out up to the
+// sweep's end (the last one cut short) and a closing gap takes up the rest of the circumference.
+function dashedArc(r,frac,color,width,extra=''){
+  if(!(frac>0)) return '';
+  const C=2*Math.PI*r, len=C*Math.min(frac,1), seg=4, gap=2, parts=[];
+  let pos=0;
+  for(;;){
+    const d=Math.min(seg,len-pos); pos+=d;
+    if(pos+gap>=len){ parts.push(d,C-pos); break; }
+    parts.push(d,gap); pos+=gap;
+  }
+  return `<circle cx="28" cy="28" r="${r}" fill="none" stroke="${color}" stroke-width="${width}"
+    stroke-dasharray="${parts.map(n=>n.toFixed(2)).join(' ')}" stroke-linecap="butt"
     transform="rotate(-90 28 28)" ${extra}/>`;
 }
 
@@ -1104,8 +1147,13 @@ function renderRing(){
       const taken=weeklyRing==='inside'&&workState(p.base)!=='idle';
       if(wk&&(!h||wk.id!==h.id)&&!taken){
         const r=weeklyRing==='inside'?16:31;
-        inner+=`<circle cx="28" cy="28" r="${r}" fill="none" stroke="${TRACK}" stroke-width="2.4" opacity="0.7"/>`
-          +svgArc(r,Math.min(wk.used,1),tone(wk.used),2.4,'opacity="0.85"');
+        const track=weeklyRingDashed
+          ?`<circle cx="28" cy="28" r="${r}" fill="none" stroke="${TRACK}" stroke-width="2.4" stroke-dasharray="4 2" opacity="0.7"/>`
+          :`<circle cx="28" cy="28" r="${r}" fill="none" stroke="${TRACK}" stroke-width="2.4" opacity="0.7"/>`;
+        const arc=weeklyRingDashed
+          ?dashedArc(r,Math.min(wk.used,1),tone(wk.used),2.4,'opacity="0.85"')
+          :svgArc(r,Math.min(wk.used,1),tone(wk.used),2.4,'opacity="0.85"');
+        inner+=track+arc;
       }
     }
     svg.innerHTML=inner;
@@ -1189,7 +1237,7 @@ function renderCard(){
   let html=`<div class="c-head">${headIcon}<span class="c-title">${esc(ui().title(p.name))}</span></div>`;
   if(staleOf(snap)&&snap.fetched_at) html+=`<div class="c-sub">${ui().updated(ago(snap.fetched_at))}</div>`;
   if(snap.status==='needsAuth'){
-    const who={claude:'Sign in to Claude Code to see usage.',cursor:'Sign in to Cursor to see usage.',codex:'Sign in to Codex to see usage.',grok:'Run grok login to see usage.',opencode:'Run opencode auth login to see usage.',gemini:'Sign in to Antigravity to see usage.'}[p.base]||'';
+    const who={claude:'Sign in to Claude Code to see usage.',cursor:'Sign in to Cursor to see usage.',codex:'Sign in to Codex to see usage.',grok:'Run grok login to see usage.',copilot:'Run gh auth login to see usage.',opencode:'Run opencode auth login to see usage.',gemini:'Sign in to Antigravity to see usage.'}[p.base]||'';
     html+=`<div class="c-note">${textCopy(who)}<br>${esc(textCopy(snap.note||''))}</div>`;
   }else if(!snap.windows.length){
     html+=`<div class="c-note">${esc(textCopy(snap.note||'Waiting for first reading…'))}</div>`;
@@ -1246,6 +1294,8 @@ function renderCard(){
 // The card follows the hovered cell: centred on it along the pill (kept inside the window), tail pointing at it.
 // On the upright edges that means matching its vertical centre; on the flat ones, its horizontal centre,
 // and the card is pushed clear of a pill whose thickness follows the cells it holds.
+// The Mac's NotchLayout.tailGap and tailLength: the tail's tip stops short of the notch, as the CSS above has it
+const TAIL_GAP=10.5, TAIL_LENGTH=28.2;
 function placeCard(){
   const cell=pill.querySelector(`.cell[data-p="${hoverId}"]`)||pill;
   const cr=cell.getBoundingClientRect();
@@ -1258,7 +1308,7 @@ function placeCard(){
     let top=Math.round(cy-ch/2); top=Math.max(8+insets[0],Math.min(top,H-insets[2]-ch-8));
     card.style.top=top+'px'; card.style.left='';
     const ry=rr.top+rr.height/2;
-    const th=tail.offsetHeight||36, ty=Math.max(top+16+th/2,Math.min(top+ch-16-th/2,ry));
+    const th=tail.offsetHeight||33, ty=Math.max(top+16+th/2,Math.min(top+ch-16-th/2,ry));
     tail.style.top=Math.round(ty-th/2)+'px'; tail.style.left='';
   }else{
     const pr=pill.getBoundingClientRect();
@@ -1267,11 +1317,11 @@ function placeCard(){
     let left=Math.round(cx-cw/2); left=Math.max(8+insets[3],Math.min(left,W-insets[1]-cw-8));
     card.style.left=left+'px';
     const rx=rr.left+rr.width/2;
-    const tw=tail.offsetWidth||36, tx=Math.max(left+16+tw/2,Math.min(left+cw-16-tw/2,rx));
+    const tw=tail.offsetWidth||33, tx=Math.max(left+16+tw/2,Math.min(left+cw-16-tw/2,rx));
     tail.style.left=Math.round(tx-tw/2)+'px';
-    // 30 px of clear gap, the same the upright edges leave, with the tail spanning it 1 px under the pill
-    if(notchEdge==='top'){ card.style.top=Math.round(pr.bottom+30)+'px'; tail.style.top=Math.round(pr.bottom-1)+'px'; }
-    else{ card.style.top=Math.round(pr.top-30-ch)+'px'; tail.style.top=Math.round(pr.top-31)+'px'; }
+    // The upright edges' gap, turned: the tail's tip TAIL_GAP clear of the pill, the card past the tail
+    if(notchEdge==='top'){ card.style.top=Math.round(pr.bottom+TAIL_GAP+TAIL_LENGTH)+'px'; tail.style.top=Math.round(pr.bottom+TAIL_GAP)+'px'; }
+    else{ card.style.top=Math.round(pr.top-TAIL_GAP-TAIL_LENGTH-ch)+'px'; tail.style.top=Math.round(pr.top-TAIL_GAP-TAIL_LENGTH)+'px'; }
   }
 }
 
@@ -1298,12 +1348,23 @@ function callq(cmd,args){ // invoke with visible failure: any command error is r
 }
 // Hot rectangles are reported in physical pixels (multiplied by this page's real DPR), so the Rust side does no conversion — WebView2's DPR and the window scale can disagree
 function rectOf(el){const r=el.getBoundingClientRect(),k=window.devicePixelRatio||1;return [r.left*k,r.top*k,r.width*k,r.height*k];}
+/* The tail and the gap between its tip and the pill: crossing it is still being on the notch, so it is
+   hot too, or a click there would go through to whatever is behind. */
+function tailReach(){
+  const t=tail.getBoundingClientRect(), p=pill.getBoundingClientRect(), k=window.devicePixelRatio||1;
+  let {left,top,right,bottom}=t;
+  if(notchEdge==='left') left=Math.min(left,p.right);
+  else if(notchEdge==='top') top=Math.min(top,p.bottom);
+  else if(notchEdge==='bottom') bottom=Math.max(bottom,p.top);
+  else right=Math.max(right,p.left);
+  return [left*k,top*k,(right-left)*k,(bottom-top)*k];
+}
 /* Rust gates click-through on these, so they are reported whenever the pill or card moves, not only
    when the card opens: a stale pill rectangle is a pill that cannot be clicked. */
 function reportHot(){
   if(folded){ callq('set_hot',{rects:[wakeRect()],expanded:false,probe:probeRect()}).catch(()=>{}); return; }
   const open=card.classList.contains('show');
-  const rects=open?[rectOf(pill),rectOf(tail),rectOf(card)]:[rectOf(pill)];
+  const rects=open?[rectOf(pill),tailReach(),rectOf(card)]:[rectOf(pill)];
   if(placeHandles()){ rects.push(rectOf(orb)); if(showMove) rects.push(rectOf(moveHandle)); }
   callq('set_hot',{rects,expanded:open}).catch(()=>{});
 }
@@ -1365,7 +1426,10 @@ listen('notch_landing',()=>{
   document.documentElement.style.visibility='hidden';
   requestAnimationFrame(()=>requestAnimationFrame(()=>invoke('notch_hidden').catch(()=>{})));
 }).catch(()=>{});
-listen('notch_reveal',()=>{ document.documentElement.style.visibility=''; }).catch(()=>{});
+listen('notch_reveal',()=>{
+  document.documentElement.style.visibility='';
+  if(carried){ carried=false; requestAnimationFrame(()=>requestAnimationFrame(()=>invoke('carry_revealed').catch(()=>{}))); }
+}).catch(()=>{});
 
 /* Collapse test: no trust in element-level mouseenter/mouseleave/e.target at all —
    pure geometry: is the cursor (clientX/Y) inside pill rect ∪ card rect ∪ their bounding box?
@@ -1442,16 +1506,34 @@ function settle(id){
   delete refreshing[id];
   renderRing();
 }
-// Alt+drag, the Mac's ⌥-drag. Without Alt a press on the pill is only ever a click — a ring
-// refreshes (#244) — so one that slips can no longer carry the notch off (#251).
+// Alt+drag, the Mac's ⌥-drag: round the screen's border, drawn by carry.html meanwhile. Without Alt
+// a press on the pill is only ever a click — a ring refreshes (#244) — so one that slips can no
+// longer carry the notch off (#251).
 pill.addEventListener('mousedown',e=>{ if(e.button!==0||folded)return; press={x:e.clientX,y:e.clientY,id:cellAt(e.clientX,e.clientY)||hoverId,alt:e.altKey}; });
 document.addEventListener('mousemove',e=>{
   if(!press||dragging||!press.alt)return;
   if(Math.abs(e.clientY-press.y)>4||Math.abs(e.clientX-press.x)>4){
     dragging=true; clearTimeout(hideTimer); hideCard();
-    invoke('drag_begin').catch(err=>{notice('drag_begin failed: '+err);dragging=false;});
+    invoke('begin_carry',{shape:carryShape()}).catch(err=>{notice('begin_carry failed: '+err);dragging=false;});
   }
 });
+/* This notch as the overlay draws it in the hand, on either kind of edge: a column standing upright,
+   a row lying flat, the same cells laid out the two ways the CSS above does — so it is measured
+   from the cells, not from the pill, which is only ever one of the two. Borders included. */
+function carryShape(){
+  const cells=[...pill.querySelectorAll('.cell')], n=Math.max(1,cells.length);
+  const cw=cells[0]?cells[0].offsetWidth:44, ch=cells[0]?cells[0].offsetHeight:70, gap=14, ends=36;
+  return {
+    radius:20, fillet:parseFloat(getComputedStyle(pill).getPropertyValue('--fillet'))||38.7,
+    upright:{depth:70, length:ends+n*ch+(n-1)*gap+2, pitch:ch+gap, inset:34.5},
+    flat:{depth:24+ch+1, length:ends+n*cw+(n-1)*gap+2, pitch:cw+gap, inset:12+ch/2},
+    cells:cells.map(el=>el.outerHTML)
+  };
+}
+// Emptied once the overlay has this notch drawn, and shown again where it was put down, after which
+// the overlay can go — so between them there is never a frame with neither
+let carried=false;
+listen('carry_hold',()=>{ carried=true; document.documentElement.style.visibility='hidden'; }).catch(()=>{});
 document.addEventListener('mouseup',e=>{
   if(e.button!==0)return;
   if(press&&!dragging&&press.id) refreshRing(press.id);
@@ -1598,6 +1680,8 @@ listen('cursor',e=>{cursorSnap=e.payload||cursorSnap;settle('cursor');renderRing
 invoke('get_cursor').then(u=>{cursorSnap=u||cursorSnap;renderRing();}).catch(()=>{});
 listen('grok',e=>{grokSnap=e.payload||grokSnap;settle('grok');renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
 invoke('get_grok').then(u=>{grokSnap=u||grokSnap;renderRing();}).catch(()=>{});
+listen('copilot',e=>{copilotSnap=e.payload||copilotSnap;settle('copilot');renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
+invoke('get_copilot').then(u=>{copilotSnap=u||copilotSnap;renderRing();}).catch(()=>{});
 
 listen('antigravity',e=>{agSnap=e.payload||agSnap;settle('gemini');renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
 invoke('get_antigravity').then(u=>{agSnap=u||agSnap;renderRing();}).catch(()=>{});
@@ -1616,6 +1700,12 @@ invoke('get_weekly_ring').then(v=>{if(typeof v==='string'){weeklyRing=v;renderRi
 listen('weekly_ring',e=>{if(typeof e.payload==='string'){weeklyRing=e.payload;renderRing();}}).catch(()=>{});
 invoke('get_color_transition').then(v=>{if(typeof v==='string'){colorTransition=v;renderRing();}}).catch(()=>{});
 listen('color_transition',e=>{if(typeof e.payload==='string'){colorTransition=e.payload;renderRing();}}).catch(()=>{});
+invoke('get_weekly_ring_dashed').then(v=>{if(typeof v==='boolean'){weeklyRingDashed=v;renderRing();}}).catch(()=>{});
+listen('weekly_ring_dashed',e=>{if(typeof e.payload==='boolean'){weeklyRingDashed=e.payload;renderRing();}}).catch(()=>{});
+invoke('get_watch_limit').then(v=>{if(typeof v==='number'){watchLimit=v;renderRing();}}).catch(()=>{});
+listen('watch_limit',e=>{if(typeof e.payload==='number'){watchLimit=e.payload;renderRing();}}).catch(()=>{});
+invoke('get_critical_limit').then(v=>{if(typeof v==='number'){criticalLimit=v;renderRing();}}).catch(()=>{});
+listen('critical_limit',e=>{if(typeof e.payload==='number'){criticalLimit=e.payload;renderRing();}}).catch(()=>{});
 listen('antigravity_prefs',e=>{if(e.payload){agPrefs=e.payload;renderRing();}}).catch(()=>{});
 listen('glyphs',e=>{glyphs=e.payload||glyphs;renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
 listen('activity',e=>{activity=e.payload||activity;renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});

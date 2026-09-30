@@ -32,6 +32,36 @@ enum ReleaseNotes {
     static var all: [ReleaseNote] {
         [
             ReleaseNote(
+                version: "1.20.0",
+                headline: L10n.t("See what each project spent of your allowance, and figures that keep up while you work."),
+                changes: [
+                    ReleaseNote.Change(
+                        title: L10n.t("Cost per project"),
+                        detail: L10n.t("A new Costs section reads the transcripts Claude Code and Codex already keep, and shows what each project spent of each login's allowance — by day, week and month, priced from your plan. Usage from before Codenotch was running is shown as other, never guessed.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("Figures that keep up"),
+                        detail: L10n.t("While a session is working, the percentage is read fresh rather than from a cache up to half an hour old, and the countdown follows the clock to the second.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("A menu bar item as wide as what it says"),
+                        detail: L10n.t("No more empty room kept for figures that are shorter than their longest; the width changes only when a figure gains or loses a character.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("Abacus.AI credits"),
+                        detail: L10n.t("A preset for custom endpoints shows a RouteLLM account's monthly credits and any bought on top.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("OpenCode and Grok stay signed in"),
+                        detail: L10n.t("OpenCode's sign-in is read from where recent versions keep it, and an expired Grok session is renewed rather than left at zero until the next login.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("Polished Português do Brasil"),
+                        detail: L10n.t("Clearer wording throughout.")
+                    ),
+                ]
+            ),
+            ReleaseNote(
                 version: "1.19.0",
                 headline: L10n.t("Carry the notch anywhere round your screen by its six dots — and new versions now ask first, right in the notch."),
                 changes: [

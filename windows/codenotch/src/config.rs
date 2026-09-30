@@ -64,9 +64,22 @@ pub struct Config {
     /// Where the weekly limit gets a ring of its own: "off", "inside" or "outside".
     #[serde(default = "default_weekly_ring")]
     pub weekly_ring: String,
+    /// true = the weekly ring's track and its own arc are drawn in small dashes rather than a
+    /// solid line, as the Mac's "Dashed weekly ring" switch does. Only means anything while
+    /// `weekly_ring` is not "off". Off by default: an extra visual change nobody asked for.
+    #[serde(default)]
+    pub weekly_ring_dashed: bool,
     /// How a usage ring changes colour: "hard_step" or "ramp".
     #[serde(default = "default_color_transition")]
     pub color_transition: String,
+    /// Where a ring turns from Ample to Watch, as a fraction of the limit. The Mac's own default.
+    #[serde(default = "default_watch_limit")]
+    pub watch_limit: f64,
+    /// Where a ring turns from Watch to Critical, as a fraction of the limit. Kept above
+    /// `watch_limit` by `clamp_watch_limit`/`clamp_critical_limit`, the same order the Mac's own
+    /// `didSet` pair enforces.
+    #[serde(default = "default_critical_limit")]
+    pub critical_limit: f64,
     /// Which appearance the pages draw in: "system", "light" or "dark".
     #[serde(
         default = "default_theme",
@@ -94,6 +107,9 @@ pub struct Config {
     /// The same one-shot migration for the OpenCode ring.
     #[serde(default)]
     pub opencode_notch_fixed: bool,
+    /// The same one-shot migration for the GitHub Copilot ring.
+    #[serde(default)]
+    pub copilot_notch_fixed: bool,
     /// false = the pill is kept off the screen edge entirely; the tray icon is then the only way in
     #[serde(default = "yes")]
     pub notch_visible: bool,
@@ -187,6 +203,23 @@ fn default_weekly_ring() -> String {
 fn default_color_transition() -> String {
     "hard_step".into()
 }
+pub fn default_watch_limit() -> f64 {
+    0.5
+}
+pub fn default_critical_limit() -> f64 {
+    0.7
+}
+
+/// Keeps `watch_limit` at least 0.01 below `critical_limit`, the same range the Mac's own slider
+/// (0.01...0.99, tightened against the sibling) allows.
+pub fn clamp_watch_limit(watch: f64, critical: f64) -> f64 {
+    watch.clamp(0.01, (critical - 0.01).max(0.01))
+}
+
+/// Keeps `critical_limit` at least 0.01 above `watch_limit`, mirroring `clamp_watch_limit`.
+pub fn clamp_critical_limit(critical: f64, watch: f64) -> f64 {
+    critical.clamp((watch + 0.01).min(1.0), 1.0)
+}
 fn default_theme() -> String {
     "system".into()
 }
@@ -259,7 +292,10 @@ impl Default for Config {
             notch_monitor: None,
             scale: default_scale(),
             weekly_ring: default_weekly_ring(),
+            weekly_ring_dashed: false,
             color_transition: default_color_transition(),
+            watch_limit: default_watch_limit(),
+            critical_limit: default_critical_limit(),
             theme: default_theme(),
             notch_providers: Vec::new(), // empty = show them all
             notch_slots: Vec::new(),     // filled in by load(), from notch_providers
@@ -267,6 +303,7 @@ impl Default for Config {
             antigravity_model: default_antigravity_model(),
             glm_notch_fixed: true, // a fresh install picks from the full list already
             opencode_notch_fixed: true,
+            copilot_notch_fixed: true,
             notch_visible: true,
             notch_on_hover: true,
             tray_visible: true,
@@ -308,6 +345,8 @@ pub fn load() -> Config {
     migrate_glm_notch(&mut cfg, &raw);
     // Likewise for OpenCode.
     migrate_opencode_notch(&mut cfg, &raw);
+    // And for GitHub Copilot.
+    migrate_copilot_notch(&mut cfg, &raw);
 
     // Both hidden would leave the app unreachable: no pill, no tray icon, no way to open settings.
     if !cfg.notch_visible && !cfg.tray_visible {
@@ -319,6 +358,10 @@ pub fn load() -> Config {
     cfg.weekly_ring = weekly_ring_or_off(&cfg.weekly_ring);
     cfg.color_transition = color_transition_or_step(&cfg.color_transition);
     cfg.theme = theme_or_system(&cfg.theme);
+    // A stored pair that crossed over (or predates this setting) is repaired the same order the
+    // Mac's own init does: critical first, then watch below it.
+    cfg.critical_limit = cfg.critical_limit.clamp(0.02, 1.0);
+    cfg.watch_limit = clamp_watch_limit(cfg.watch_limit, cfg.critical_limit);
     cfg
 }
 
@@ -352,6 +395,21 @@ fn migrate_opencode_notch(cfg: &mut Config, raw: &Option<String>) {
     cfg.opencode_notch_fixed = true;
 }
 
+fn migrate_copilot_notch(cfg: &mut Config, raw: &Option<String>) {
+    let predates = raw
+        .as_deref()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
+        .map(|v| v.get("copilot_notch_fixed").is_none())
+        .unwrap_or(false);
+    if !predates {
+        return;
+    }
+    if !cfg.notch_slots.is_empty() && !cfg.notch_slots.iter().any(|s| s.provider == "copilot") {
+        cfg.notch_slots.push(TraySlot { provider: "copilot".into() });
+    }
+    cfg.copilot_notch_fixed = true;
+}
+
 pub fn save(cfg: &Config) {
     let path = config_path();
     if let Some(dir) = path.parent() {
@@ -365,8 +423,8 @@ pub fn save(cfg: &Config) {
 #[cfg(test)]
 mod tests {
     use super::{
-        carry_shared_position, color_transition_or_step, keep_open_on_upgrade, snap_scale, theme_or_system,
-        weekly_ring_or_off, Config,
+        carry_shared_position, clamp_critical_limit, clamp_watch_limit, color_transition_or_step,
+        keep_open_on_upgrade, snap_scale, theme_or_system, weekly_ring_or_off, Config,
     };
 
     /// Show on hover is the Mac's default, so a fresh install gets it — but an update must not start
@@ -448,6 +506,20 @@ mod tests {
         assert_eq!(theme_or_system("dark"), "dark");
         assert_eq!(theme_or_system("Dark"), "system");
         assert_eq!(theme_or_system(""), "system");
+    }
+
+    #[test]
+    fn watch_and_critical_limits_never_cross() {
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-9;
+        assert_eq!(clamp_watch_limit(0.5, 0.7), 0.5, "inside the gap, untouched");
+        assert!(near(clamp_watch_limit(0.9, 0.7), 0.69), "pushed back below critical");
+        assert_eq!(clamp_watch_limit(0.0, 0.7), 0.01, "never below the floor");
+        assert_eq!(clamp_watch_limit(0.5, 0.0), 0.01, "a critical of 0 still leaves a floor");
+
+        assert_eq!(clamp_critical_limit(0.7, 0.5), 0.7, "inside the gap, untouched");
+        assert!(near(clamp_critical_limit(0.4, 0.5), 0.51), "pushed back above watch");
+        assert_eq!(clamp_critical_limit(2.0, 0.5), 1.0, "never past 100%");
+        assert_eq!(clamp_critical_limit(0.7, 1.0), 1.0, "a watch of 100% still leaves a ceiling");
     }
 
     #[test]

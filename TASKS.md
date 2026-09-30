@@ -183,8 +183,8 @@ Cursor account — so the notch honestly reported zero usage belonging to somebo
 who was not the user. The two identities were only visible side by side:
 
 ```
-editor state.vscdb : google-oauth2|user_01JT4P1FS4AB8WA4N7QVSYZRTT  (raphaelvinz.rv@…, "Vinz")
-WebView /api/auth/me:              user_01JXH6KPZ5D7XZHMEQ181QRG2S  (xurfa9@…,        "Xurfa")
+editor state.vscdb : google-oauth2|<editor-account-id>  (account A)
+WebView /api/auth/me:              <webview-account-id> (account B)
 ```
 
 `CursorCredentials` now reads `cursorAuth/accessToken` and
@@ -583,8 +583,8 @@ would be theatre. What there *is* to show is whose readings these are:
 
 ```
 Claude  Pro · via Claude Code
-Cursor  raphaelvinz.rv@gmail.com · Free · via Cursor
-Codex   raphaelvinz.rv@gmail.com · Free · via Codex
+Cursor  [account email] · Free · via Cursor
+Codex   [account email] · Free · via Codex
 ```
 
 That is not decoration. Borrowing a credential means the account being read can
@@ -1725,6 +1725,118 @@ decision only — `ringFraction`, the tooltip's "Context used" and the
 VoiceOver text keep the true number. Pinned by
 `testASmallContextStillReadsAsAnArc` and `testTheMinimumArcIsLongerThanItsCaps`
 in `NotchLayoutTests`.
+
+## How current the numbers are
+
+### A fetch every thirty seconds served from a half-hour-old file
+
+The schedule was not what made a percentage look frozen. `UsageStore` already
+polled every 60s while a session was busy — but `ClaudeOAuthProvider` answers
+from Claude Desktop's HTTP cache first, and would serve an entry up to **30
+minutes** old, or a `claude "/usage"` answer up to **5 minutes** old. So the
+ring could be re-read twice a minute and still show a number from half an hour
+ago. Both allowances are right for a ring nobody is watching: the cache is free
+and unrefusable, and it cannot be wrong about a number that is not changing.
+
+`UsageFreshness` is the caller's half of that sentence. `.standard` is the
+schedule's default and takes whatever a provider has; `.live` says a cached
+reading will not do, and the Claude provider then accepts the Desktop entry only
+inside 2 minutes and reuses a CLI answer only inside 90 seconds — dropping
+through to the endpoint, whose own back-off is untouched, when neither can
+answer for right now. It is a protocol requirement with an extension default
+rather than an extension member alone: the store holds providers as `any
+UsageProvider`, so a statically dispatched call would have reached every
+default and no override. Every other provider fetches on every call and gets
+the default for free.
+
+`.live` is asked for exactly where the number is moving or being read: while
+`isBusy()` is true, on **Refresh now**, on a single ring's refresh, on a phone
+asking for a snapshot, and on a look.
+
+### What the schedule spends, and where
+
+The tick is now 15s and carries a `busyRefreshInterval` of 30s, where it used to
+be a 60s tick that fetched on every one of them while busy. Two things needed
+the finer tick: a busy interval under a minute is not expressible without it,
+and `hasWindowRolledOver` — the reset boundary, which owes an alert — is noticed
+within a tick. `shouldRefresh` gained the interval with a default of 0, which is
+the old "every tick while busy" and keeps the existing assertions honest about
+what they are asserting.
+
+Two events ask outside the schedule, and neither is a timer:
+
+- **A session stopping.** The falling edge of `isBusy` is where the schedule
+  drops to the 5-minute idle interval and leaves the final figure — the one you
+  came to look at — alone. `refreshBecauseWorkFinished` takes one reading there,
+  spaced per provider by the busy interval, because a session's state is read
+  from a transcript and legitimately flickers between busy and waiting through
+  one long run. `AppDelegate` holds `busyProviderIDs` to tell the edge from the
+  middle: `ActivityCoordinator` reports the state after a change and cannot say
+  what it was before.
+- **A look.** Opening the status item's menu, unfolding the notch, or the
+  pointer landing on a ring. `refreshBecauseSomeoneIsLooking` asks live and
+  spaces itself by 15s, so four rings hovered in four seconds is one fetch. The
+  hover hook matters on its own: a notch held permanently open never unfolds,
+  so there would otherwise be no look to notice.
+
+### Ask the provider every time you look
+
+Even bounded at two minutes, a percentage is still a figure that was *read*
+rather than a live wire — and somebody comparing Codenotch against a vendor's
+own dashboard figure by figure wants the wire. `UsageFreshness.fromSource` is
+that: zero allowance on both of Claude's held sources, so whatever is held is
+skipped however new it is. A cache written two seconds ago *is* the account's
+number, so this knowingly spends a request to be told what it already knew.
+
+It is a setting (`Preferences.asksProviderOnLook`, **General › Readings**) and
+off by default, because it is not strictly better. A provider that rate-limits
+answers one request too many with a back-off that then holds a number *older*
+than the cache would have been. So it is what somebody asks for and never what
+the schedule decides: the closure reaches `refreshBecauseSomeoneIsLooking` and
+nothing else, and the spacing is unchanged at 15s — the setting changes what an
+answer may be served from, never how often one is asked for. **Refresh now**, a
+ring clicked, the settings row's refresh and a phone's refresh ask for it
+unconditionally: each of those is a human's own click, rate-limited by the human.
+
+Two things had to be right for it not to make freshness *worse*:
+
+- **It may not leave a ring emptier than `.standard` would have.** On a Mac with
+  Claude Desktop and no usable token — no Claude Code, an expired keychain item,
+  a 429 — the cache is the only source there is. Skipping it and then failing
+  would have turned a filled ring into a dimmed one on every hover. The keychain
+  path is now wrapped: where nothing live can answer and something *was* skipped
+  (`desktopAllowance < desktopFreshness`), the held reading is returned rather
+  than the error thrown. A cache past the ordinary thirty minutes is not
+  resurrected by it — it was not showable before the request and is not after.
+- **Skipping a cache is not missing one.** `noteDesktopMiss` arms a five-minute
+  rescan throttle, and it was armed by any reading the caller did not accept. So
+  one look with the setting on would have stopped the Desktop cache being read at
+  all for the next five minutes, taking the source away from every poll after it.
+  `showable` — would this reading be shown at *any* freshness — is now kept apart
+  from "may it be shown now", and only the first arms the throttle.
+
+### The countdown is read against a clock
+
+None of the above touches the time remaining, which needs no fetch at all — it
+is arithmetic on a `resetsAt` the last reading already carried. Two things were
+nevertheless stale:
+
+- The notch's clock ticked every 30s, so a card open on "Resets in 12 min" was
+  up to half a minute behind the clock it is read against. It ticks every second
+  now, and `tickClock` only *publishes* a second when something on screen counts
+  in them (`isExpanded || hoveredIndex != nil`) — `model.now` is `@Published`
+  and every card is drawn against it, so publishing is a SwiftUI update of the
+  whole notch. A folded notch keeps the old 30s pace.
+- `ResetCopy` counted the last minute as "<1m" in the bar and "Resets in 1 min"
+  in the card, both of which could mean four seconds. The last minute now counts
+  in seconds — "42s", "Resets in 42 sec" — and `nextCountdownChange` steps by a
+  second inside it and by a minute above it, so the menu bar's own one-shot
+  timer redraws a five-hour window once a minute for 4h59m and once a second for
+  the last sixty. The bar's `countdownRoom` already reserves the width of
+  "4h 59m", so seconds add none: `testSecondsFitTheRoomTheCountdownAlreadyReserves`
+  holds it to that. The wake-up's tolerance also had to stop being a flat
+  second — at a one-second step it let the timer wake having already skipped the
+  figure it woke up to show.
 
 ## Decisions needed
 - [ ] Final app name (`Codenotch` is a placeholder)
