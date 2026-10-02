@@ -26,7 +26,6 @@ mod glyphs;
 mod trayicon;
 mod activity;
 mod diag;
-mod dropzones;
 mod carry;
 mod fullscreen;
 mod watcher;
@@ -207,9 +206,10 @@ static LANDING_HIDDEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU
 /// Longest a landing stays out of sight if the page never reports a settled layout.
 const LANDING_FALLBACK_MS: u64 = 700;
 
-/// Places the notch on a screen at another scale without the change of scale showing.
+/// Puts the notch down where the window changes size — on a screen at another scale, or carried
+/// round onto an edge where the window is another shape — without the change showing.
 ///
-/// Arriving there, Windows resizes the window by the ratio of the two scales before `place_notch`
+/// Arriving at another scale, Windows resizes the window by the ratio of the two scales before `place_notch`
 /// puts it right, and the page then re-zooms itself for the new pixel ratio a debounce later, which
 /// can bring one more zoom correction from `report_dpr`. All of that played out on screen as the
 /// notch jumping sizes as it landed. Hiding the window did not help: a hidden WebView2 stops painting
@@ -218,16 +218,7 @@ const LANDING_FALLBACK_MS: u64 = 700;
 /// So the window stays up and the page empties itself instead — the window is transparent, so an
 /// empty page is an invisible notch — while the WebView keeps doing its layout. It is revealed when
 /// the page reports a layout that has stopped changing (`report_dpr` with `settled`), not after a
-/// guessed delay. At the same scale nothing is resized on arrival, so there is nothing to hide.
-fn land_on_another_screen(app: &AppHandle, from_scale: f64, to_scale: f64) {
-    if (from_scale - to_scale).abs() < 0.01 {
-        return place_notch(app);
-    }
-    land_quietly(app);
-}
-
-/// `land_on_another_screen`'s landing, for any placement that resizes the window: at another scale,
-/// or carried round onto an edge where the window is another shape.
+/// guessed delay.
 fn land_quietly(app: &AppHandle) {
     use std::sync::atomic::Ordering::SeqCst;
     let gen = LANDING_SEQ.fetch_add(1, SeqCst) + 1;
@@ -531,8 +522,8 @@ pub fn reset_bar(app: &AppHandle) {
     place_notch(app);
 }
 
-/// The notch is in the hand — carried round the border (`carry.rs`) or by its move handle — and
-/// placing it again would fight that.
+/// The notch is in the hand, carried round the border (`carry.rs`), and placing it again would
+/// fight that.
 pub(crate) static DRAGGING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(windows)]
@@ -543,128 +534,6 @@ fn left_button_down() -> bool {
 #[cfg(not(windows))]
 fn left_button_down() -> bool {
     false
-}
-
-/// Which edge a point belongs to: the screen split into four triangles about its centre, as on the
-/// Mac. Nearest-edge rather than hit testing the zones, which are thin — landing inside a 70 px strip
-/// would be threading a needle.
-pub(crate) fn edge_at(x: f64, y: f64, w: f64, h: f64) -> &'static str {
-    let (left, right, top, bottom) = (x, w - x, y, h - y);
-    let nearest = left.min(right).min(top).min(bottom);
-    if nearest == right {
-        "right"
-    } else if nearest == left {
-        "left"
-    } else if nearest == top {
-        "top"
-    } else {
-        "bottom"
-    }
-}
-
-/// Carrying the notch by its move handle: the zones go up, the pointer picks one, and releasing
-/// hands it over. The notch itself stays where it is until then — what is being chosen is a place on
-/// the screen, not a distance moved, so nothing follows the pointer.
-///
-/// `depth` and `length` are the pill's own measurements standing upright, in the notch page's CSS px.
-#[tauri::command]
-fn begin_move(app: AppHandle, depth: f64, length: f64) {
-    if DRAGGING.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        return;
-    }
-    std::thread::spawn(move || {
-        let done = |app: &AppHandle| {
-            dropzones::hide(app);
-            DRAGGING.store(false, std::sync::atomic::Ordering::SeqCst);
-            let _ = app.emit("move_end", ());
-        };
-        let Some(start) = target_screen(&app) else {
-            done(&app);
-            return;
-        };
-        let from = {
-            let st = app.state::<AppState>();
-            let c = st.cfg.lock().unwrap();
-            config::edge_or_right(&c.notch_edge)
-        };
-        // The overlay is at the monitor's own scale; the notch page is that scale times its size
-        let size = ui_scale(&app);
-        // Every figure here is the work area's, to match the overlay window and the notch itself:
-        // the zone drawn on the taskbar's edge has to sit where the notch will, and the edge the
-        // pointer picks has to be read against the same rectangle the zones are drawn in.
-        let zones_on = |s: &Screen, target: &str| {
-            let (_, _, aw, ah) = s.area();
-            dropzones::Zones {
-                w: aw as f64 / s.scale,
-                h: ah as f64 / s.scale,
-                depth: depth * size,
-                length: length * size,
-                target: target.to_string(),
-            }
-        };
-        let all = screens(&app);
-        let mut mon = start.clone();
-        let mut zones = zones_on(&mon, &from);
-        dropzones::show(&app, &mon, &zones);
-        let mut target = from.clone();
-        while left_button_down() {
-            if let Ok(cur) = app.cursor_position() {
-                // Crossing onto another screen takes the zones with it. The silhouette is in logical
-                // px, so it keeps its size on a screen at another scale, exactly as the notch will.
-                if let Some(s) = screen_at(&all, cur.x, cur.y) {
-                    if !same_screen(s, &mon) {
-                        mon = s.clone();
-                        zones = zones_on(&mon, &target);
-                        dropzones::relocate(&app, &mon, &zones);
-                    }
-                }
-                let (ax, ay, aw, ah) = mon.area();
-                let next = edge_at(cur.x - ax as f64, cur.y - ay as f64, aw as f64, ah as f64);
-                if next != target {
-                    target = next.to_string();
-                    zones.target = target.clone();
-                    dropzones::retarget(&app, &zones);
-                    let _ = app.emit("move_target", &target);
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(16));
-        }
-        // The right edge of another screen is a move too, though the edge has the same name
-        let mut crossed = !same_screen(&mon, &start);
-        // A screen Windows will not name has nothing stable to remember it by, which is why the
-        // picker in Settings lists those disabled. Saving `None` would not mean "this screen", it
-        // means "the primary", so the notch would jump off it at the next placement. Take the edge
-        // the carry chose and leave it on the screen it came from rather than record a move that
-        // will not survive.
-        let unnameable = crossed && mon.name.is_none();
-        if unnameable {
-            crossed = false;
-        }
-        applog(&format!(
-            "notch carry: {from} -> {target} on {:?}{}",
-            mon.name,
-            if unnameable { " (unnamed screen, staying put)" } else { "" }
-        ));
-        if target != from || crossed || unnameable {
-            {
-                let st = app.state::<AppState>();
-                let mut c = st.cfg.lock().unwrap();
-                // It lands where it was last left on that edge — centred, like the zone it was
-                // offered, on an edge it has never been slid along
-                c.notch_edge = target.clone();
-                if !unnameable {
-                    c.notch_monitor = mon.name.clone();
-                }
-                config::save(&c);
-            }
-            if crossed {
-                land_on_another_screen(&app, start.scale, mon.scale);
-            } else {
-                place_notch(&app);
-            }
-        }
-        done(&app);
-    });
 }
 
 pub fn place_bar(app: &AppHandle) {
@@ -1187,7 +1056,7 @@ fn get_theme_resolved(app: AppHandle) -> String {
 /// rather than left dark under a light page.
 pub fn apply_theme(app: &AppHandle) {
     let theme = theme_choice(app);
-    for label in ["notch", "settings", dropzones::LABEL] {
+    for label in ["notch", "settings"] {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.set_theme(theme);
         }
@@ -1726,25 +1595,6 @@ fn set_notch_edge(app: AppHandle, edge: String) -> String {
 }
 
 #[tauri::command]
-fn get_move_handle(app: AppHandle) -> bool {
-    let st = app.state::<AppState>();
-    let c = st.cfg.lock().unwrap();
-    c.show_move_handle
-}
-
-#[tauri::command]
-fn set_move_handle(app: AppHandle, on: bool) -> bool {
-    {
-        let st = app.state::<AppState>();
-        let mut c = st.cfg.lock().unwrap();
-        c.show_move_handle = on;
-        config::save(&c);
-    }
-    let _ = app.emit("move_handle", on);
-    on
-}
-
-#[tauri::command]
 fn get_adaptive_pill(app: AppHandle) -> bool {
     let st = app.state::<AppState>();
     let c = st.cfg.lock().unwrap();
@@ -2125,15 +1975,11 @@ fn main() {
             get_monitors,
             set_notch_monitor,
             open_settings,
-            begin_move,
-            get_move_handle,
-            set_move_handle,
             get_adaptive_pill,
             set_adaptive_pill,
             get_fold_for_full_screen,
             set_fold_for_full_screen,
             get_full_screen,
-            dropzones::get_zones,
             settings_window::get_system_look,
             settings_window::quit_app,
             settings_window::settings_ready,
@@ -2373,21 +2219,6 @@ mod tests {
         assert_eq!(palettes.len(), 2, "one palette per appearance, dark and light");
         assert_eq!(palettes[0], palettes[1], "the two palettes declare different names");
         assert!(palettes[0].len() >= 15, "{:?} is too short to be the palette", palettes[0]);
-    }
-
-    /// Four triangles about the centre, so every point on the screen belongs to exactly one edge.
-    #[test]
-    fn a_carried_notch_lands_on_the_nearest_edge() {
-        let (w, h) = (2560.0, 1440.0);
-        assert_eq!(super::edge_at(2500.0, 700.0, w, h), "right");
-        assert_eq!(super::edge_at(20.0, 700.0, w, h), "left");
-        assert_eq!(super::edge_at(1280.0, 30.0, w, h), "top");
-        assert_eq!(super::edge_at(1280.0, 1400.0, w, h), "bottom");
-        // The corner diagonals are the boundaries: a step either side of one changes the answer
-        assert_eq!(super::edge_at(690.0, 700.0, w, h), "left");
-        assert_eq!(super::edge_at(700.0, 690.0, w, h), "top");
-        // A pointer off the screen — in the gap a smaller one leaves — still answers the nearest edge
-        assert_eq!(super::edge_at(-200.0, 700.0, w, h), "left");
     }
 
     /// A carry follows the pointer from one screen to the next, and holds on to the last one while

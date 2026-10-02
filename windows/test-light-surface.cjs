@@ -9,10 +9,8 @@ const { test } = require('node:test');
 const root = __dirname;
 const notch = readFileSync(join(root, 'codenotch/ui/notch.html'), 'utf8');
 const settings = readFileSync(join(root, 'codenotch/ui/settings.html'), 'utf8');
-const dropzones = readFileSync(join(root, 'codenotch/ui/dropzones.html'), 'utf8');
 const main = readFileSync(join(root, 'codenotch/src/main.rs'), 'utf8');
 const settingsWindow = readFileSync(join(root, 'codenotch/src/settings_window.rs'), 'utf8');
-const dropzonesWindow = readFileSync(join(root, 'codenotch/src/dropzones.rs'), 'utf8');
 const carry = readFileSync(join(root, 'codenotch/ui/carry.html'), 'utf8');
 const carryWindow = readFileSync(join(root, 'codenotch/src/carry.rs'), 'utf8');
 
@@ -70,7 +68,7 @@ test('light surface is a complete palette and redraws the inline SVG colours', (
   assert.match(notch, /listen\('theme_resolved',e=>applyTheme\(e\.payload\)\)/);
 });
 
-test('Settings and dropzones receive the same theme before either can paint', () => {
+test('Settings and the carry overlay receive the same theme before either can paint', () => {
   const themeRow = settings.match(/<span class="seg" id="seg-theme">([\s\S]*?)<\/span>/);
   assert.ok(themeRow, 'Settings exposes a theme row');
   for (const choice of ['system', 'light', 'dark']) {
@@ -80,11 +78,9 @@ test('Settings and dropzones receive the same theme before either can paint', ()
   assert.match(settings, /invoke\('set_theme', \{ theme: want \}\)/, 'Settings persists a choice');
   assert.match(settings, /call\('get_theme_resolved', undefined, null\)\.then\(v => \{ if\(typeof v === 'string'\) applyTheme\(v\); \}\)/,
     'Settings asks for the resolved value when it opens');
-  assert.match(dropzones, /:root\[data-theme="light"\]/, 'dropzones have a matching light outline');
 
   const initialization = /\.initialization_script\(crate::theme_script\(crate::resolved_theme\(app\)\)\)/;
   assert.match(settingsWindow, initialization, 'Settings receives its theme before the first frame');
-  assert.match(dropzonesWindow, initialization, 'dropzones receive their theme before the first frame');
   assert.match(carryWindow, initialization, 'the carry overlay receives its theme before the first frame');
   assert.match(main, /d\.dataset\.theme=window\.__CN_THEME__/, 'the initialization script writes data-theme');
   assert.match(main, /app\.emit\("theme_resolved", resolved_theme\(app\)\)/,

@@ -32,6 +32,36 @@ enum ReleaseNotes {
     static var all: [ReleaseNote] {
         [
             ReleaseNote(
+                version: "1.21.0",
+                headline: L10n.t("Custom endpoints speak Anthropic and Gemini, llama.cpp shows its speed, and Antigravity reads without the IDE open."),
+                changes: [
+                    ReleaseNote.Change(
+                        title: L10n.t("Anthropic and Gemini custom endpoints"),
+                        detail: L10n.t("A custom endpoint can now be an Anthropic or a Gemini API as well as an OpenAI-compatible one, with its models found for you.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("llama.cpp, with its own mark and its speed"),
+                        detail: L10n.t("A llama.cpp endpoint wears the official icon, and shows its generation speed and how many requests are running and waiting.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("Antigravity without the IDE running"),
+                        detail: L10n.t("With the IDE closed, Codenotch starts Antigravity's own language server to read your quota rather than showing nothing.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("OpenCode, whichever version"),
+                        detail: L10n.t("Usage and activity are read from both the 1.x and the 2.x database, so neither reads as nothing spent.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("Endpoints over Tailscale"),
+                        detail: L10n.t("A plain http endpoint at a 100.64.x.x address — a machine on your tailnet — is now reachable.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("简体中文 and 繁體中文, filled in"),
+                        detail: L10n.t("The strings that still showed in English are translated.")
+                    ),
+                ]
+            ),
+            ReleaseNote(
                 version: "1.20.0",
                 headline: L10n.t("See what each project spent of your allowance, and figures that keep up while you work."),
                 changes: [

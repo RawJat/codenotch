@@ -43,6 +43,7 @@ struct CustomEndpointsSettingsView: View {
         "mistral",
         "ollama",
         "lmstudio",
+        "llamacpp",
         "qwen",
         "gemini-spark"
     ]
@@ -376,6 +377,25 @@ struct CustomEndpointsSettingsView: View {
                 }
 
                 HStack {
+                    Text(L10n.t("API type"))
+                        .frame(width: 120, alignment: .leading)
+                    Picker("", selection: Binding(
+                        get: { editingEndpoint?.apiType ?? .openAICompatible },
+                        set: { newType in
+                            editingEndpoint?.apiType = newType
+                            editingEndpoint?.availableModels = []
+                            editingEndpoint?.selectedModel = ""
+                            testResult = nil
+                        }
+                    )) {
+                        Text(L10n.t("OpenAI-compatible")).tag(CustomEndpointAPIType.openAICompatible)
+                        Text(L10n.t("Anthropic Messages")).tag(CustomEndpointAPIType.anthropic)
+                        Text(L10n.t("Google Gemini")).tag(CustomEndpointAPIType.google)
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                HStack {
                     Text(L10n.t("Base URL"))
                         .frame(width: 120, alignment: .leading)
                     VStack(alignment: .leading, spacing: 4) {
@@ -441,20 +461,22 @@ struct CustomEndpointsSettingsView: View {
                     }
                 }
 
-                HStack {
-                    Text(L10n.t("Auth Header"))
-                        .frame(width: 120, alignment: .leading)
-                    TextField(L10n.t("Authorization"), text: Binding(
-                        get: { editingEndpoint?.headerKey ?? "Authorization" },
-                        set: {
-                            editingEndpoint?.headerKey = $0
-                            usageDetectionResult = nil
-                            if !hasManuallySelectedSource && isDetectionEligible {
-                                scheduleAutomaticDiscovery()
+                if (editingEndpoint?.apiType ?? .openAICompatible) == .openAICompatible {
+                    HStack {
+                        Text(L10n.t("Auth Header"))
+                            .frame(width: 120, alignment: .leading)
+                        TextField(L10n.t("Authorization"), text: Binding(
+                            get: { editingEndpoint?.headerKey ?? "Authorization" },
+                            set: {
+                                editingEndpoint?.headerKey = $0
+                                usageDetectionResult = nil
+                                if !hasManuallySelectedSource && isDetectionEligible {
+                                    scheduleAutomaticDiscovery()
+                                }
                             }
-                        }
-                    ))
-                    .textFieldStyle(.roundedBorder)
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                    }
                 }
 
                 HStack {
@@ -1028,7 +1050,8 @@ struct CustomEndpointsSettingsView: View {
         switch preset {
         case .litellm, .openRouter: return L10n.t("USD spend")
         case .newAPI: return L10n.t("Quota units")
-        case .vllm, .llamaCpp: return L10n.t("Tokens since server start")
+        case .vllm: return L10n.t("Tokens since server start")
+        case .llamaCpp: return L10n.t("Generation speed, requests and token totals")
         case .abacus: return L10n.t("Subscription credits")
         }
     }
@@ -1047,6 +1070,7 @@ struct CustomEndpointsSettingsView: View {
         let url = endpoint.baseURL
         let key = draftAPIKey
         let header = endpoint.headerKey
+        let apiType = endpoint.apiType
         let auth = endpoint.usageAuthentication
         let source = endpoint.usageSource
         let preset = endpoint.usagePreset
@@ -1062,7 +1086,8 @@ struct CustomEndpointsSettingsView: View {
                 let result = await CustomEndpointNetwork.shared.detectPreset(
                     baseURL: url,
                     apiKey: auth == .apiKey ? key : "",
-                    headerKey: header
+                    headerKey: header,
+                    apiType: apiType
                 )
                 if Task.isCancelled { return }
 
@@ -1070,6 +1095,7 @@ struct CustomEndpointsSettingsView: View {
                     guard editingDraftID == draftID,
                           editingEndpoint?.baseURL == url,
                           editingEndpoint?.headerKey == header,
+                          editingEndpoint?.apiType == apiType,
                           editingEndpoint?.usageAuthentication == auth,
                           editingEndpoint?.usageSource == source,
                           editingEndpoint?.usagePreset == preset,
@@ -1102,6 +1128,7 @@ struct CustomEndpointsSettingsView: View {
         let url = endpoint.baseURL
         let key = draftAPIKey
         let header = endpoint.headerKey
+        let apiType = endpoint.apiType
         let auth = endpoint.usageAuthentication
         let source = endpoint.usageSource
         let preset = endpoint.usagePreset
@@ -1113,7 +1140,8 @@ struct CustomEndpointsSettingsView: View {
             let result = await CustomEndpointNetwork.shared.detectPreset(
                 baseURL: url,
                 apiKey: auth == .apiKey ? key : "",
-                headerKey: header
+                headerKey: header,
+                apiType: apiType
             )
             if Task.isCancelled { return }
 
@@ -1121,6 +1149,7 @@ struct CustomEndpointsSettingsView: View {
                 guard editingDraftID == draftID,
                       editingEndpoint?.baseURL == url,
                       editingEndpoint?.headerKey == header,
+                      editingEndpoint?.apiType == apiType,
                       editingEndpoint?.usageAuthentication == auth,
                       editingEndpoint?.usageSource == source,
                       editingEndpoint?.usagePreset == preset,
@@ -1337,7 +1366,6 @@ struct CustomEndpointsSettingsView: View {
         editingEndpoint = nil
         trackingUnitBeforeJSON = nil
         editingDraftID = UUID()
-        isDetectingUsage = false
         usageDetectionResult = nil
         draftAPIKey = ""
         isCreatingNew = false
@@ -1356,7 +1384,8 @@ struct CustomEndpointsSettingsView: View {
             let res = await CustomEndpointNetwork.shared.testEndpoint(
                 baseURL: endpoint.baseURL,
                 apiKey: draftAPIKey,
-                headerKey: endpoint.headerKey
+                headerKey: endpoint.headerKey,
+                apiType: endpoint.apiType
             )
             await MainActor.run {
                 self.isTesting = false
@@ -1378,7 +1407,8 @@ struct CustomEndpointsSettingsView: View {
             let res = await CustomEndpointNetwork.shared.testEndpoint(
                 baseURL: endpoint.baseURL,
                 apiKey: endpoint.apiKey ?? "",
-                headerKey: endpoint.headerKey
+                headerKey: endpoint.headerKey,
+                apiType: endpoint.apiType
             )
             await MainActor.run {
                 var updated = endpoint

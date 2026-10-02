@@ -299,8 +299,9 @@ pub(crate) fn find_cli() -> Option<std::path::PathBuf> {
     v.into_iter().find(|p| p.is_file() && !is_desktop_owned(p))
 }
 
-/// Whether a launch is worth making. Pure, so every branch is testable without a clock or a subprocess
-fn should_renew(
+/// Whether a launch is worth making. Pure, so every branch is testable without a clock or a subprocess.
+/// grok.rs times its CLI launches by the same rule.
+pub(crate) fn should_renew(
     expires_at: Option<u64>,
     now: u64,
     attempted_for: Option<u64>,

@@ -16,12 +16,27 @@ enum CustomEndpointSpendPeriod: Equatable {
 
 enum CustomEndpointPresetReading: Equatable {
     case tokens(Int)
+    case llamaCpp(LlamaCppMetricsReading)
     case spendUSD(Double, period: CustomEndpointSpendPeriod)
     case quota(used: Int, granted: Int?)
     /// Abacus.AI subscription credits: what is left, the plan's monthly
     /// allowance, and everything available this cycle (allowance plus any
     /// credits bought on top).
     case credits(left: Double, monthly: Double, total: Double)
+}
+
+/// Server-wide measurements, not per-agent or per-response timings.
+struct LlamaCppMetricsReading: Equatable {
+    let totalTokens: Int
+    let generationTokensPerSecond: Double?
+    let activeRequests: Int?
+    let queuedRequests: Int?
+
+    var speedText: String {
+        guard let rate = generationTokensPerSecond else { return "— tok/s" }
+        if rate > 0 && rate < 0.1 { return "<0.1 tok/s" }
+        return "\(rate.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))) tok/s"
+    }
 }
 
 enum CustomEndpointFileImportError: LocalizedError, Equatable {
@@ -220,7 +235,13 @@ enum CustomEndpointPresetUsage {
         case .vllm:
             return parseCounters(data, prompt: "vllm:prompt_tokens_total", completion: "vllm:generation_tokens_total")
         case .llamaCpp:
-            return parseCounters(data, prompt: "llamacpp:prompt_tokens_total", completion: "llamacpp:tokens_predicted_total")
+            guard let counters = parseCounters(data, prompt: "llamacpp:prompt_tokens_total",
+                                               completion: "llamacpp:tokens_predicted_total"),
+                  case .tokens(let total) = counters else { return nil }
+            return .llamaCpp(LlamaCppMetricsReading(totalTokens: total,
+                generationTokensPerSecond: gauge(data, name: "llamacpp:predicted_tokens_seconds"),
+                activeRequests: gauge(data, name: "llamacpp:requests_processing").flatMap { Int(exactly: $0) },
+                queuedRequests: gauge(data, name: "llamacpp:requests_deferred").flatMap { Int(exactly: $0) }))
         case .abacus:
             guard let value = try? JSONDecoder().decode(AbacusCreditsResponse.self, from: data),
                   value.success else { return nil }
@@ -294,18 +315,42 @@ enum CustomEndpointPresetUsage {
     }
 
     private static func parseCounters(_ data: Data, prompt: String, completion: String) -> CustomEndpointPresetReading? {
-        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        guard let samples = metricSamples(data, names: [prompt, completion]) else { return nil }
         var totals: [String: Int] = [:]
+        for (name, values) in samples {
+            for sample in values {
+                guard let value = integerSample(sample) else { return nil }
+                let (sum, overflow) = totals[name, default: 0].addingReportingOverflow(value)
+                guard !overflow else { return nil }
+                totals[name] = sum
+            }
+        }
+        guard let first = totals[prompt], let second = totals[completion] else { return nil }
+        let (sum, overflow) = first.addingReportingOverflow(second)
+        return overflow ? nil : .tokens(sum)
+    }
+
+    private static func gauge(_ data: Data, name: String) -> Double? {
+        // An average cannot be summed across labelled series. Ambiguous or
+        // invalid gauges are unavailable, while valid token totals survive.
+        guard let samples = metricSamples(data, names: [name])?[name], samples.count == 1,
+              let value = Double(samples[0]), value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+
+    private static func metricSamples(_ data: Data, names: Set<String>) -> [String: [Substring]]? {
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        var samples: [String: [Substring]] = [:]
         var series: [String: Set<[Label]>] = [:]
         for rawLine in text.split(whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.isEmpty || line.hasPrefix("#") { continue }
             guard let boundary = line.firstIndex(where: { $0 == "{" || $0.isWhitespace }) else {
-                if line == prompt || line == completion { return nil }
+                if names.contains(line) { return nil }
                 continue
             }
             let name = String(line[..<boundary])
-            guard name == prompt || name == completion else { continue }
+            guard names.contains(name) else { continue }
             var remainder = line[boundary...]
             var labels: [Label] = []
             if remainder.first == "{" {
@@ -319,16 +364,11 @@ enum CustomEndpointPresetUsage {
             guard remainder.first?.isWhitespace == true else { return nil }
             let fields = remainder.split(whereSeparator: \.isWhitespace)
             guard fields.count == 1 || fields.count == 2,
-                  let value = integerSample(fields[0]),
                   fields.count == 1 || (Double(fields[1]).map { $0.isFinite } == true),
                   series[name, default: []].insert(labels).inserted else { return nil }
-            let (sum, overflow) = totals[name, default: 0].addingReportingOverflow(value)
-            guard !overflow else { return nil }
-            totals[name] = sum
+            samples[name, default: []].append(fields[0])
         }
-        guard let first = totals[prompt], let second = totals[completion] else { return nil }
-        let (sum, overflow) = first.addingReportingOverflow(second)
-        return overflow ? nil : .tokens(sum)
+        return samples
     }
 
     private static func integerSample(_ sample: Substring) -> Int? {
