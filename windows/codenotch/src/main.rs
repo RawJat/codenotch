@@ -15,6 +15,8 @@ mod traymenu;
 mod usage;
 mod claude_auth;
 mod codex;
+mod reset_watch;
+mod reset_alert;
 mod cursor;
 mod grok;
 mod copilot;
@@ -40,7 +42,7 @@ use tauri::{AppHandle, Emitter, Manager};
 /// and its tail on the left. `fitZoom` in ui/notch.html divides by the same width.
 pub const NOTCH_W: f64 = 360.0;
 /// Hand-bumped build tag, written to run.log at startup so a log can always be matched to the exe that wrote it.
-pub const BUILD: &str = "r31";
+pub const BUILD: &str = "r33";
 /// The notch window's long side: the upright window's height, and both sides of the flat one.
 ///
 /// Five cells make a 447 px pill; its fillets add 38.7 px at each end and the settings orb reaches
@@ -55,6 +57,7 @@ pub struct AppState {
     pub usage: Mutex<usage::UsageSnapshot>,
     /// Codex snapshot (same UsageSnapshot shape; status may also be none/absent)
     pub codex: Mutex<usage::UsageSnapshot>,
+    pub reset_alerts: reset_alert::AlertQueue,
     pub cursor: Mutex<usage::UsageSnapshot>,
     /// Grok Build credits, read from the Grok CLI's own session
     pub grok: Mutex<usage::UsageSnapshot>,
@@ -1547,6 +1550,39 @@ fn set_autostart(on: bool) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_reset_notifications(app: AppHandle) -> bool {
+    app.state::<AppState>().cfg.lock().unwrap().reset_notifications
+}
+
+#[tauri::command]
+fn set_reset_notifications(app: AppHandle, on: bool) -> bool {
+    {
+        let st = app.state::<AppState>();
+        let mut cfg = st.cfg.lock().unwrap();
+        cfg.reset_notifications = on;
+        config::save(&cfg);
+    }
+    if !on {
+        reset_alert::disable(&app);
+    }
+    on
+}
+
+#[tauri::command]
+fn get_reset_notification_sound(app: AppHandle) -> bool {
+    app.state::<AppState>().cfg.lock().unwrap().reset_notification_sound
+}
+
+#[tauri::command]
+fn set_reset_notification_sound(app: AppHandle, on: bool) -> bool {
+    let st = app.state::<AppState>();
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.reset_notification_sound = on;
+    config::save(&cfg);
+    on
+}
+
+#[tauri::command]
 fn get_hooks_installed() -> bool {
     hooks_install::is_installed()
 }
@@ -1896,6 +1932,7 @@ fn main() {
             cfg: Mutex::new(cfg),
             usage: Mutex::new(usage::load_persisted()),
             codex: Mutex::new(codex::load_persisted()),
+            reset_alerts: reset_alert::AlertQueue::default(),
             cursor: Mutex::new(cursor::load_persisted()),
             grok: Mutex::new(grok::load_persisted()),
             copilot: Mutex::new(copilot::load_persisted()),
@@ -1915,6 +1952,12 @@ fn main() {
             updater::install_update,
             updater::open_update_installer,
             get_codex,
+            get_reset_notifications,
+            set_reset_notifications,
+            get_reset_notification_sound,
+            set_reset_notification_sound,
+            reset_alert::preview_reset_alert,
+            reset_alert::dismiss_reset_alert,
             get_cursor,
             get_grok,
             get_copilot,
@@ -2011,6 +2054,7 @@ fn main() {
             glm::start(handle.clone());
             opencode::start(handle.clone());
             activity::start(handle.clone());
+            reset_watch::start(handle.clone());
             // Collecting glyphs may read icon resources out of a few executables; do it off the main thread and push when done
             let gh = handle.clone();
             std::thread::spawn(move || reload_glyphs(&gh));
@@ -2151,8 +2195,8 @@ mod tests {
 
     /// `fitZoom` treats a window wider than the page's design width as a DPI disagreement and zooms
     /// the layout to close the gap, so a design width left behind when the window is widened zooms
-    /// the whole notch instead — and `placeCard`, which writes unzoomed styles from zoomed rects,
-    /// then puts the card at the wrong place entirely.
+    /// the whole notch instead. (`placeCard` unzooms its rects since the bottom edge's card fell
+    /// behind the pill under such a zoom, but the notch is still drawn at the wrong size.)
     #[test]
     fn the_pages_design_widths_are_the_window_widths() {
         let page = include_str!("../ui/notch.html");

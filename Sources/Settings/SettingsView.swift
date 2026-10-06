@@ -2086,6 +2086,21 @@ private struct AccountRow: View {
             // MiniMax is signed into in Codenotch, or by a Coding Plan key
             // pasted here. The region is which console that key belongs to.
             // Stored in the keychain on Save, the same way Ollama's is.
+            if provider.id == "qoder" {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.t("Region")).foregroundStyle(.secondary)
+                    Picker(selection: $preferences.qoderRegion) {
+                        Text(L10n.t("International")).tag(Sites.QoderRegion.global)
+                        Text(L10n.t("China mainland")).tag(Sites.QoderRegion.china)
+                    } label: { EmptyView() }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 160)
+                    Text(L10n.t("Sign in to Qoder in Codenotch. Each region has a separate account and session. Website verification may be required."))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             if provider.id == "minimax" {
                 minimaxEntry
             }

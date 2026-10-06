@@ -103,6 +103,7 @@ struct StatusItemSummary: Equatable {
         let countdown = window?.resetsAt.flatMap { ResetCopy.countdown(to: $0, now: now) }
         let label = sharesMark
             ? ClaudeProfile.slug(fromProviderID: snapshot.id) ?? CodexProfile.slug(fromProviderID: snapshot.id)
+                ?? CommandCodeProfile.slug(fromProviderID: snapshot.id)
             : nil
         let weeklyWindow = showingWeeklyLimit ? snapshot.weeklyLimitWindow : nil
         let weeklyIsOver = weeklyWindow?.resetsAt.map { $0 <= now } ?? false

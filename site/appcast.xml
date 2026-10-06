@@ -3,22 +3,20 @@
     <channel>
         <title>Codenotch</title>
         <item>
-            <title>1.21.0</title>
-            <pubDate>Fri, 02 Oct 2026 15:55:40 +0700</pubDate>
-            <sparkle:version>23</sparkle:version>
-            <sparkle:shortVersionString>1.21.0</sparkle:shortVersionString>
+            <title>1.22.0</title>
+            <pubDate>Tue, 06 Oct 2026 15:18:27 +0700</pubDate>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>1.22.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<p>Custom endpoints speak Anthropic and Gemini, llama.cpp shows its speed, and Antigravity reads without the IDE open.</p>
+            <description><![CDATA[<p>Qoder's credits, more than one Command Code account, and DeepSeek's balance from the wallet that has one.</p>
 <ul>
-<li><b>Anthropic and Gemini custom endpoints</b>, beside OpenAI-compatible ones.</li>
-<li><b>llama.cpp</b> with its own icon, its generation speed and its request counts.</li>
-<li><b>Antigravity without the IDE running.</b></li>
-<li><b>OpenCode, whichever version:</b> both the 1.x and the 2.x database are read.</li>
-<li><b>Endpoints over Tailscale:</b> plain http at 100.64.x.x addresses.</li>
-<li><b>简体中文 and 繁體中文</b>, filled in.</li>
+<li><b>Qoder</b>: a ring for your credits, international or China mainland.</li>
+<li><b>More than one Command Code account</b>, each its own ring.</li>
+<li><b>DeepSeek's balance from the funded wallet.</b></li>
+<li><b>Українська</b>, up to date.</li>
 </ul>
 ]]></description>
-            <enclosure url="https://hivinz.com/Codenotch-1.21.0.dmg" length="12482338" type="application/octet-stream" sparkle:edSignature="In/3G4tTtWy/92Qhzx6JfMVo/s8PAdGRrYrlIiIxBFrgSu9RIOkc8wyNvWJ38yC/KVro2HcnT2YhIvIkPtXUAw=="/>
+            <enclosure url="https://hivinz.com/Codenotch-1.22.0.dmg" length="12539050" type="application/octet-stream" sparkle:edSignature="LQKgAU5TlcmJscVui3QIJGTLUzUtQQSQ/YqqMT2IKSsdvjEp1hHgIQ21phRyZe8WGL74Dhi5o3kdqBPNAm6ZCQ=="/>
         </item>
     </channel>
 </rss>

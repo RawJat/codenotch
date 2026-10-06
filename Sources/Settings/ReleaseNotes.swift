@@ -32,6 +32,28 @@ enum ReleaseNotes {
     static var all: [ReleaseNote] {
         [
             ReleaseNote(
+                version: "1.22.0",
+                headline: L10n.t("Qoder's credits, more than one Command Code account, and DeepSeek's balance from the wallet that has one."),
+                changes: [
+                    ReleaseNote.Change(
+                        title: L10n.t("Qoder"),
+                        detail: L10n.t("A ring for your Qoder credits, international or China mainland. Sign in once inside Codenotch; nothing is copied from your browser.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("More than one Command Code account"),
+                        detail: L10n.t("Each ~/.commandcode-name folder signed in with Command Code is its own ring, the way Claude and Codex profiles already are.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("DeepSeek's balance from the funded wallet"),
+                        detail: L10n.t("With more than one currency listed, the balance comes from the wallet that holds money rather than the first one named.")
+                    ),
+                    ReleaseNote.Change(
+                        title: L10n.t("Українська, up to date"),
+                        detail: L10n.t("Every string this version shows.")
+                    ),
+                ]
+            ),
+            ReleaseNote(
                 version: "1.21.0",
                 headline: L10n.t("Custom endpoints speak Anthropic and Gemini, llama.cpp shows its speed, and Antigravity reads without the IDE open."),
                 changes: [

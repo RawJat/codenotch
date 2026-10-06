@@ -696,6 +696,17 @@ final class UsageStore: ObservableObject {
         return openAccountSource(providerID: providerID)
     }
 
+    /// A new region is a different account: discard the old reading before
+    /// rebinding, so stale fallback cannot show the other region's quota.
+    func providerContextChanged(providerID: String, applying change: () -> Void) {
+        cancelRefresh(providerID: providerID)
+        lastGood.removeValue(forKey: providerID)
+        archive.forget(providerID)
+        snapshots.removeAll { $0.id == providerID }
+        change()
+        providerAuthenticationChanged(providerID: providerID)
+    }
+
     /// Tell consumers that a provider has just confirmed authentication. The
     /// refresh updates the notch; the revision updates Settings' account row.
     func providerAuthenticationChanged(providerID: String) {
