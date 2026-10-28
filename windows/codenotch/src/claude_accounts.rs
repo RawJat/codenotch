@@ -205,10 +205,10 @@ pub fn add_claude_account(app: AppHandle) -> Result<String, String> {
 pub fn set_claude_account_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(), String> {
     let st = app.state::<AppState>();
     let mut cfg = st.cfg.lock().unwrap();
-    if !profiles(&cfg).iter().any(|p| p.id == id) { return Err("Unknown Claude account".into()); }
+    let profile = profiles(&cfg).into_iter().find(|p| p.id == id).ok_or("Unknown Claude account")?;
     let mut next = cfg.clone();
     if let Some(p) = next.claude_profiles.iter_mut().find(|p| p.id == id) { p.enabled = enabled; }
-    else { next.claude_profiles.push(ClaudeProfileConfig { id, name: String::new(), enabled }); }
+    else { next.claude_profiles.push(ClaudeProfileConfig { id, name: profile.name, enabled }); }
     crate::config::save_checked(&next)?;
     *cfg = next;
     drop(cfg);
