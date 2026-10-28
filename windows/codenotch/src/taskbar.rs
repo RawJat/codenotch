@@ -109,18 +109,17 @@ pub(crate) fn native_destroyed(app: &AppHandle, hwnd: isize) {
 }
 
 #[derive(Clone, Serialize)]
-pub struct Options { mode: String, width: u32, supported: bool, status: String }
+pub struct Options { mode: String, supported: bool, status: String }
 
 #[tauri::command]
 pub fn get_taskbar_options(app: AppHandle) -> Options {
     let st = app.state::<AppState>();
     let cfg = st.cfg.lock().unwrap();
-    Options { mode: cfg.taskbar_mode.clone(), width: cfg.taskbar_width.clamp(144, 520),
-        supported: cfg!(windows), status: STATUS.lock().unwrap().clone() }
+    Options { mode: cfg.taskbar_mode.clone(), supported: cfg!(windows), status: STATUS.lock().unwrap().clone() }
 }
 
 #[tauri::command]
-pub fn set_taskbar_options(app: AppHandle, mode: String, width: u32) -> Result<Options, String> {
+pub fn set_taskbar_options(app: AppHandle, mode: String) -> Result<Options, String> {
     if !["off", "left", "right"].contains(&mode.as_str()) { return Err("Invalid taskbar position".into()); }
     if mode != "off" && !cfg!(windows) { return Err("Taskbar display requires Windows".into()); }
     {
@@ -130,7 +129,6 @@ pub fn set_taskbar_options(app: AppHandle, mode: String, width: u32) -> Result<O
         if mode != "off" { next.notch_visible = false; next.tray_visible = true; }
         else if next.taskbar_mode != "off" { next.notch_visible = true; }
         next.taskbar_mode = mode;
-        next.taskbar_width = width.clamp(144, 520);
         crate::config::save_checked(&next)?;
         *cfg = next;
     }
@@ -140,6 +138,9 @@ pub fn set_taskbar_options(app: AppHandle, mode: String, width: u32) -> Result<O
     let _ = app.emit("taskbar_options", &options);
     Ok(options)
 }
+
+/// The notch's `providers()`, after its Claude accounts.
+const NOTCH_ORDER: [&str; 10] = ["codex", "glm", "deepseek", "opencode", "commandcode", "cursor", "grok", "copilot", "gemini", "qoder"];
 
 #[derive(Serialize)]
 pub struct Item { pub(crate) id: String, pub(crate) name: String, pub(crate) provider: String, pub(crate) headline_id: Option<String>, pub(crate) work_state: String, pub(crate) snapshot: UsageSnapshot }
@@ -166,7 +167,7 @@ pub fn get_taskbar_items(app: AppHandle) -> Vec<Item> {
         items.push(Item { id: format!("claude@{}", p.id), headline_id, work_state, name: p.name,
             provider: "claude".into(), snapshot });
     }
-    for id in crate::TRAY_PROVIDER_IDS.into_iter().filter(|id| *id != "claude") {
+    for id in NOTCH_ORDER {
         if !cfg.notch_slots.is_empty() && !cfg.notch_slots.iter().any(|s| s.provider == id) { continue; }
         let snapshot = crate::snapshot_of(&app, id);
         if snapshot.status == "absent" { continue; }
@@ -729,6 +730,9 @@ mod native {
         let mut next_z_check = Instant::now();
         let mut next_frame = Instant::now();
         let mut last_frame = None;
+        // What the cells need, in physical px, from the last frame sent; 0 until there is one.
+        let mut wanted_width = 0;
+        let mut last_wanted = 0;
         loop {
             let now = Instant::now();
             let foreground = unsafe { GetForegroundWindow() };
@@ -779,7 +783,11 @@ mod native {
             } else { None };
             let position = if let Some((bar, bounds)) = layout {
                 let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(bar) }.max(96) as f64 / 96.0;
-                let key = (bar.0 as isize, bounds, cfg.taskbar_mode == "right", cfg.taskbar_width, scale.to_bits(), generation);
+                // The strip is as wide as its cells, so a figure gaining a digit resizes it. That
+                // rereads the free space but keeps the position it had until the reading is in.
+                let wanted = if wanted_width > 0 { wanted_width } else { (100.0 * scale) as i32 };
+                let key = (bar.0 as isize, bounds, cfg.taskbar_mode == "right", scale.to_bits(), generation);
+                if last_wanted != wanted { last_wanted = wanted; next_layout_read = now; }
                 if layout_key != Some(key) {
                     layout_key = Some(key);
                     cached_position = None;
@@ -791,7 +799,7 @@ mod native {
                 if now >= next_layout_read {
                     if let Some(blocks) = occupied(&uia, bar, bounds, HWND(child_hwnd as _)) {
                         let candidate = refresh_position(bounds, Some(&blocks), cached_position, cfg.taskbar_mode == "right",
-                            (cfg.taskbar_width.clamp(144, 520) as f64 * scale) as i32, (8.0 * scale) as i32, (100.0 * scale) as i32);
+                            wanted, (8.0 * scale) as i32, wanted.min((100.0 * scale) as i32));
                         last_verified = Some(now);
                         // Explorer may briefly report a complete but transitional layout during
                         // activation. Confirm a collision/no-space reading after 300 ms before
@@ -806,7 +814,7 @@ mod native {
                             cached_position = candidate;
                             pending_change = None;
                             next_layout_read = now + Duration::from_secs(if candidate.is_some() { 2 } else { 1 });
-                            layout_status = if candidate.is_none() { "No free space on the taskbar. Try the other side or a smaller width.".into() } else { String::new() };
+                            layout_status = if candidate.is_none() { "No free space on the taskbar. Try the other side.".into() } else { String::new() };
                             layout_reason = if candidate.is_some() { "visible" } else { "no_space" };
                         }
                     } else {
@@ -843,6 +851,9 @@ mod native {
                 if let Some(bar) = bar {
                     let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(bar) }.max(96) as f32 / 96.0;
                     let frame = native_frame(&app);
+                    // The strip's height is the taskbar's less the 3 px free_position leaves each side.
+                    let height = rect(bar).map(|r| r.bottom - r.top - 6).unwrap_or(0) as f32;
+                    wanted_width = crate::taskbar_model::content_width(&frame, height, scale) as i32;
                     let key = (generation,scale.to_bits(),frame.clone());
                     if last_frame.as_ref() != Some(&key) {
                         last_frame = Some(key);
