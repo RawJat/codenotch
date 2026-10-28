@@ -26,6 +26,9 @@ pub struct TraySlot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeProfileConfig {
     pub id: String,
+    /// No longer read: accounts are named from their sign-in, as on the Mac. Kept so 1.24.0, which
+    /// requires it, can still load the file.
+    #[serde(default)]
     pub name: String,
     #[serde(default = "yes")]
     pub enabled: bool,
