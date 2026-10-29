@@ -1149,20 +1149,6 @@ const ES_STATIC = {
   'The figure under each ring reads what is left — 87% instead of 13% used, the same number the card prints beside it. The rings themselves still fill by what is spent.':'La cifra bajo cada anillo muestra lo que queda: 87% en lugar de 13% usado, el mismo número que la tarjeta muestra al lado. Los anillos se siguen llenando según lo gastado.'
 };
 const STATIC_TEXT = { 'pt-BR': PT_BR_STATIC, ru: RU_STATIC, zh: ZH_STATIC, 'zh-Hant': ZH_HANT_STATIC, ja: JA_STATIC, ko: KO_STATIC, uk: UK_STATIC, es: ES_STATIC };
-const RESET_COPY = {
-  'pt-BR':['Notificações de reset','Mostrar um cartão quando o Claude, Codex, Cursor ou outro provedor ativo renovar uma janela após pelo menos 10% de uso. O cartão também aparece com a notch oculta.','Som de notificação','Prévia do cartão de reset','Ver prévia','Notificações'],
-  ru:['Уведомления о сбросе','Показывать карточку, когда Claude, Codex, Cursor или другой активный провайдер обновляет окно, если использовано не менее 10%. Карточка видна и при скрытой панели.','Звук уведомления','Предпросмотр карточки','Показать','Уведомления'],
-  zh:['重置通知','当 Claude、Codex、Cursor 或其他活跃的服务商窗口在使用至少 10% 后更新时显示卡片。隐藏缺口栏时也会显示。','通知声音','预览重置卡片','预览卡片','通知'],
-  'zh-Hant':['重設通知','當 Claude、Codex、Cursor 或其他啟用中的服務窗口在使用至少 10% 後更新時顯示卡片。隱藏凹口列時也會顯示。','通知音效','預覽重設卡片','預覽卡片','通知'],
-  ja:['リセット通知','Claude、Codex、Cursor などアクティブなプロバイダーの枠を 10% 以上使った後に更新されたらカードを表示します。ノッチを非表示にしていても表示されます。','通知音','リセットカードをプレビュー','プレビュー','通知'],
-  ko:['한도 초기화 알림','Claude, Codex, Cursor 등 활성 공급자의 한도를 10% 이상 사용한 뒤 갱신되면 카드를 표시합니다. 노치를 숨겨도 표시됩니다.','알림 소리','초기화 카드 미리 보기','미리 보기','알림'],
-  es:['Notificaciones de renovación','Muestra una tarjeta cuando Claude, Codex, Cursor u otro proveedor activo renueva un periodo tras al menos un 10% de uso. La tarjeta aparece aunque el notch esté oculto.','Sonido de notificación','Vista previa de la tarjeta','Ver tarjeta','Notificaciones'],
-  uk:['Сповіщення про скидання','Показувати картку, коли Claude, Codex, Cursor чи інший активний провайдер оновлює вікно, якщо використано щонайменше 10%. Картка зʼявляється і за прихованої панелі.','Звук сповіщення','Попередній перегляд картки','Переглянути','Сповіщення'],
-};
-const RESET_KEYS = ['Reset notifications', 'Show a card when Claude, Codex, Cursor or another active provider renews a window after at least 10% use. The card also appears while the notch is hidden.', 'Notification sound', 'Preview the reset card', 'Preview card', 'Notifications'];
-for(const [lang, values] of Object.entries(RESET_COPY)){
-  RESET_KEYS.forEach((key, index) => { STATIC_TEXT[lang][key] = values[index]; });
-}
 // "Sign in" takes the verb the Mac catalog uses in "Sign in to %@"
 const CLAUDE_ROW_COPY = {
   'pt-BR':['Entrar','Adicionar…','Adicionar uma conta Claude','Cada conta entra pelo Claude Code em uma pasta própria e ganha seu próprio anel. Desligar uma para de lê-la e mantém o login.','Conclua o login no navegador ou na janela do terminal.','Instale o Claude Code CLI para adicionar uma conta ou entrar nela.','O login foi cancelado, não terminou ou expirou. Tente novamente.','A conta não foi adicionada: o login não foi concluído.'],
@@ -1177,6 +1163,20 @@ const CLAUDE_ROW_COPY = {
 const CLAUDE_ROW_KEYS = ['Sign in', 'Add…', 'Add a Claude account', 'Each account signs in with Claude Code in a folder of its own and gets its own ring. Switching one off stops reading it and keeps its sign-in.', 'Finish signing in in the browser or terminal window.', 'Install the standalone Claude Code CLI to add or sign in to an account.', 'Sign-in was cancelled, did not finish or timed out. Try again.', 'The account was not added: its sign-in did not finish.'];
 for(const [lang, values] of Object.entries(CLAUDE_ROW_COPY)){
   CLAUDE_ROW_KEYS.forEach((key, index) => { STATIC_TEXT[lang][key] = values[index]; });
+}
+const RESET_COPY = {
+  'pt-BR':['Notificações de reset','Mostrar um cartão quando o Claude, Codex, Cursor ou outro provedor ativo renovar uma janela após pelo menos 10% de uso. O cartão também aparece com a notch oculta.','Som de notificação','Prévia do cartão de reset','Ver prévia','Notificações'],
+  ru:['Уведомления о сбросе','Показывать карточку, когда Claude, Codex, Cursor или другой активный провайдер обновляет окно, если использовано не менее 10%. Карточка видна и при скрытой панели.','Звук уведомления','Предпросмотр карточки','Показать','Уведомления'],
+  zh:['重置通知','当 Claude、Codex、Cursor 或其他活跃的服务商窗口在使用至少 10% 后更新时显示卡片。隐藏缺口栏时也会显示。','通知声音','预览重置卡片','预览卡片','通知'],
+  'zh-Hant':['重設通知','當 Claude、Codex、Cursor 或其他啟用中的服務窗口在使用至少 10% 後更新時顯示卡片。隱藏凹口列時也會顯示。','通知音效','預覽重設卡片','預覽卡片','通知'],
+  ja:['リセット通知','Claude、Codex、Cursor などアクティブなプロバイダーの枠を 10% 以上使った後に更新されたらカードを表示します。ノッチを非表示にしていても表示されます。','通知音','リセットカードをプレビュー','プレビュー','通知'],
+  ko:['한도 초기화 알림','Claude, Codex, Cursor 등 활성 공급자의 한도를 10% 이상 사용한 뒤 갱신되면 카드를 표시합니다. 노치를 숨겨도 표시됩니다.','알림 소리','초기화 카드 미리 보기','미리 보기','알림'],
+  es:['Notificaciones de renovación','Muestra una tarjeta cuando Claude, Codex, Cursor u otro proveedor activo renueva un periodo tras al menos un 10% de uso. La tarjeta aparece aunque el notch esté oculto.','Sonido de notificación','Vista previa de la tarjeta','Ver tarjeta','Notificaciones'],
+  uk:['Сповіщення про скидання','Показувати картку, коли Claude, Codex, Cursor чи інший активний провайдер оновлює вікно, якщо використано щонайменше 10%. Картка зʼявляється і за прихованої панелі.','Звук сповіщення','Попередній перегляд картки','Переглянути','Сповіщення'],
+};
+const RESET_KEYS = ['Reset notifications', 'Show a card when Claude, Codex, Cursor or another active provider renews a window after at least 10% use. The card also appears while the notch is hidden.', 'Notification sound', 'Preview the reset card', 'Preview card', 'Notifications'];
+for(const [lang, values] of Object.entries(RESET_COPY)){
+  RESET_KEYS.forEach((key, index) => { STATIC_TEXT[lang][key] = values[index]; });
 }
 const STATUS_TEXT = {
   en:{ ok:'', stale:'last reading is old', needsAuth:'not signed in', absent:'not installed', none:'nothing to report', error:'not reachable', backoff:'rate limited, trying again soon' },
@@ -1446,7 +1446,9 @@ function accountBlock(p, isOn, locked){
     h += '<div class="acct-sub"><span>' + esc(ui('Notch reads', 'Notch reads')) + '</span>' + agSelect('limit', AG_LIMITS, agPrefs.limit) + '</div>'
       + '<div class="acct-sub"><span>' + esc(ui('Model data', 'Model data')) + '</span>' + agSelect('model', AG_MODELS, agPrefs.model) + '</div>';
   }
-  if(p.id === 'claude') h += hooksHtml();
+  if(p.id === 'claude'){
+    h += hooksHtml();
+  }
   return h + '</div>';
 }
 function hooksHtml(){
