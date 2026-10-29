@@ -25,10 +25,10 @@
     const status=taskbar.status||'';
     const text=!taskbar.supported?t('Available on Windows.','Disponível no Windows.'):(typeof uiLang!=='undefined'&&uiLang==='pt-BR'?(statusMessages[status]||status):status);
     el('taskbar-status').hidden=!text;el('taskbar-status').textContent=text;
-    el('taskbar-title').textContent=t('Taskbar','Barra de tarefas');el('taskbar-position-label').textContent=t('Display','Exibição');
-    const labels=[t('Original notch','Formato atual'),t('Left side','À esquerda'),t('Before system tray','Antes da bandeja')];
+    el('taskbar-title').textContent=t('Taskbar','Barra de tarefas');el('taskbar-position-label').textContent=t('Show rings in','Mostrar os anéis em');
+    const labels=[t('Notch','Notch'),t('Taskbar, left','Barra de tarefas, à esquerda'),t('Taskbar, right','Barra de tarefas, à direita')];
     [...el('taskbar-position').options].forEach((o,i)=>o.textContent=labels[i]);
-    el('taskbar-help').textContent=t('The panel uses free space on the primary taskbar. Hover for account limits; click to refresh that account. It hides when space is unavailable, the taskbar is hidden, or an app is full screen. The system tray icon stays available.','A faixa ocupa espaço livre na barra principal. Passe o mouse para ver os limites; clique para atualizar aquela conta. Ela se oculta sem espaço, com a barra oculta ou em tela cheia. O ícone perto do relógio continua disponível.');
+    el('taskbar-help').textContent=t('On the taskbar, the rings use its free space: hover one for its card, click it to refresh, right-click for Settings. They hide when there is no room, the taskbar is hidden or an app is full screen.','Na barra de tarefas, os anéis usam o espaço livre: passe o mouse sobre um para ver o cartão, clique para atualizar e clique com o botão direito para abrir as configurações. Eles somem quando falta espaço, quando a barra está oculta ou quando um app está em tela cheia.');
   }
   async function saveTaskbar(){
     busy=true;
