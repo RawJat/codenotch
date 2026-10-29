@@ -345,8 +345,9 @@ fn show_hover_on_main(app: &AppHandle, id: String, anchor_x: f64, anchor_width: 
     // JSON encoding prevents an account identifier from becoming executable script.
     let item_json = serde_json::to_string(&id).unwrap_or_else(|_| "null".into());
     let script = format!("window.__CODENOTCH_TASKBAR_HOVER__=true;window.__CODENOTCH_TASKBAR_ITEM_ID__={item_json};");
-    let result = WebviewWindowBuilder::new(app, HOVER, WebviewUrl::App("taskbar.html".into()))
-        .title("Codenotch · Uso da conta").inner_size(320.0, 360.0).resizable(false)
+    // The notch's own page, showing only its card: the taskbar's card is the notch's.
+    let result = WebviewWindowBuilder::new(app, HOVER, WebviewUrl::App("notch.html".into()))
+        .title("Codenotch").inner_size(CARD_WIDTH, 360.0).resizable(false)
         .decorations(false).transparent(true).shadow(false).skip_taskbar(true).always_on_top(true)
         .focused(false).focusable(false).visible(false).initialization_script(script).build();
     if let Ok(w) = result {
@@ -358,6 +359,12 @@ fn show_hover_on_main(app: &AppHandle, id: String, anchor_x: f64, anchor_width: 
 }
 
 fn place_hover(window: &tauri::WebviewWindow, bounds: Rect, show: bool) {
+    // Where the hovered ring is, for the tail, in physical px from the card window's left edge
+    let anchor = HOVER_STATE.lock().unwrap().anchor;
+    if let Some(anchor) = anchor {
+        let ring = anchor.strip.left as f64 + (anchor.x + anchor.width / 2.0).clamp(0.0, (anchor.strip.right - anchor.strip.left) as f64);
+        let _ = window.emit("taskbar_hover_tail", serde_json::json!({ "x": ring - bounds.left as f64, "below": bounds.top >= anchor.strip.bottom }));
+    }
     #[cfg(windows)] {
         use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_SHOWWINDOW}};
         if let Ok(raw) = window.hwnd() { unsafe {
@@ -463,8 +470,13 @@ impl HoverAnchor {
 
 fn measured_hover_height(height: f64, dpr: f64) -> Option<f64> {
     if !height.is_finite() || height <= 0.0 || !dpr.is_finite() || !(0.5..=8.0).contains(&dpr) { return None; }
-    Some(height.clamp(120.0, 600.0) * dpr)
+    Some(height.clamp(40.0, 600.0) * dpr)
 }
+
+/// The notch card's width on a flat edge, `body[data-edge="bottom"] #card` in notch.html.
+const CARD_WIDTH: f64 = 246.0;
+/// The notch's TAIL_GAP: the tail's point stops this far short of what it points at.
+const TAIL_GAP: f64 = 10.5;
 
 /// Popup geometry stays in physical pixels, including monitors left/above the primary.
 fn hover_position(strip: Rect, screen: Rect, anchor_x: f64, anchor_width: f64, scale: f64, content_height: f64) -> Option<Rect> {
@@ -472,16 +484,17 @@ fn hover_position(strip: Rect, screen: Rect, anchor_x: f64, anchor_width: f64, s
         return None;
     }
     let gap = (8.0 * scale).round().max(1.0) as i32;
+    let tail_gap = (TAIL_GAP * scale).round().max(1.0) as i32;
     let available_width = screen.right - screen.left - 2 * gap;
     let available_height = screen.bottom - screen.top - 2 * gap;
     if available_width <= 0 || available_height <= 0 || strip.right <= strip.left || strip.bottom <= strip.top { return None; }
-    let width = ((320.0 * scale).round() as i32).min(available_width);
+    let width = ((CARD_WIDTH * scale).round() as i32).min(available_width);
     let height = (content_height.round() as i32).max(1).min(available_height);
     // A partially clipped indicator anchors to its visible part of the strip.
     let center = strip.left as f64 + (anchor_x + anchor_width / 2.0).clamp(0.0, (strip.right - strip.left) as f64);
     let x = (center.round() as i32 - width / 2).clamp(screen.left + gap, screen.right - width - gap);
-    let above = strip.top - height - gap;
-    let y = if above >= screen.top + gap { above } else { strip.bottom + gap };
+    let above = strip.top - height - tail_gap;
+    let y = if above >= screen.top + gap { above } else { strip.bottom + tail_gap };
     let y = y.clamp(screen.top + gap, screen.bottom - height - gap);
     Some(Rect { left: x, top: y, right: x + width, bottom: y + height })
 }
@@ -974,14 +987,14 @@ mod tests {
         let strip = Rect { left:800, top:1043, right:1080, bottom:1077 };
         let first = hover_position(strip, screen, 0.0, 40.0, 1.0, 360.0).unwrap();
         let next = hover_position(strip, screen, 48.0, 40.0, 1.0, 360.0).unwrap();
-        assert_eq!((first.left, first.top, first.right, first.bottom), (660, 675, 980, 1035));
+        assert_eq!((first.left, first.top, first.right, first.bottom), (697, 672, 943, 1032));
         assert_eq!(next.left - first.left, 48);
     }
     #[test]
     fn hover_clamps_at_both_edges_and_handles_a_top_taskbar() {
         let screen = Rect { left:0, top:0, right:1920, bottom:1080 };
         let left = hover_position(Rect { left:8, top:3, right:288, bottom:37 }, screen, 0.0, 40.0, 1.0, 360.0).unwrap();
-        assert_eq!((left.left, left.top), (8, 45));
+        assert_eq!((left.left, left.top), (8, 48));
         let right = hover_position(Rect { left:1632, top:1043, right:1912, bottom:1077 }, screen, 240.0, 40.0, 1.0, 360.0).unwrap();
         assert_eq!(right.right, 1912);
     }
@@ -990,14 +1003,14 @@ mod tests {
         let screen = Rect { left:-2880, top:-200, right:0, bottom:1420 };
         let strip = Rect { left:-1500, top:1360, right:-1080, bottom:1414 };
         let popup = hover_position(strip, screen, 72.0, 60.0, 1.5, 540.0).unwrap();
-        assert_eq!(popup, Rect { left:-1638, top:808, right:-1158, bottom:1348 });
+        assert_eq!(popup, Rect { left:-1582, top:804, right:-1213, bottom:1344 });
     }
     #[test]
     fn hover_shrinks_to_small_monitors_and_rejects_invalid_geometry() {
         let screen = Rect { left:0, top:0, right:280, bottom:250 };
         let strip = Rect { left:8, top:214, right:272, bottom:248 };
         let popup = hover_position(strip, screen, -50.0, 40.0, 1.0, 360.0).unwrap();
-        assert_eq!(popup, Rect { left:8, top:8, right:272, bottom:242 });
+        assert_eq!(popup, Rect { left:8, top:8, right:254, bottom:242 });
         assert!(hover_position(strip, screen, f64::NAN, 40.0, 1.0, 360.0).is_none());
         assert!(hover_position(strip, screen, 0.0, 0.0, 1.0, 360.0).is_none());
         assert!(hover_position(strip, screen, 0.0, 40.0, 0.0, 360.0).is_none());
@@ -1055,12 +1068,13 @@ mod tests {
         let old = anchor.position(None).unwrap();
         let short = anchor.position(measured_hover_height(180.0,1.5)).unwrap();
         assert_eq!((short.left,short.right,short.bottom), (old.left,old.right,old.bottom));
-        assert_eq!((short.top,short.bottom), (1078,1348));
+        assert_eq!((short.top,short.bottom), (1074,1344));
         assert_eq!(short.bottom-short.top, 270);
     }
     #[test]
     fn measured_content_is_bounded_and_invalid_sizes_are_rejected() {
-        assert_eq!(measured_hover_height(80.0,1.5),Some(180.0));
+        assert_eq!(measured_hover_height(80.0,1.5),Some(120.0));
+        assert_eq!(measured_hover_height(20.0,1.5),Some(60.0));
         assert_eq!(measured_hover_height(950.0,1.5),Some(900.0));
         for height in [0.0,-5.0,f64::NAN,f64::INFINITY] { assert!(measured_hover_height(height,1.0).is_none()); }
         for dpr in [0.0,0.1,8.1,f64::NAN,f64::INFINITY] { assert!(measured_hover_height(180.0,dpr).is_none()); }
@@ -1085,7 +1099,7 @@ mod tests {
         assert_eq!(local,Rect { left:210,top:3,right:490,bottom:37 });
         assert_eq!((local.right-local.left,local.bottom-local.top),(280,34));
         let popup = hover_position(screen,Rect { left:-1920,top:20,right:0,bottom:1100 },0.0,40.0,1.0,180.0).unwrap();
-        assert_eq!((popup.left,popup.bottom),(-1850,1055));
+        assert_eq!((popup.left,popup.bottom),(-1813,1052));
     }
     #[test]
     fn a_latest_order_callback_still_applies_geometry_if_the_earlier_placement_was_superseded() {

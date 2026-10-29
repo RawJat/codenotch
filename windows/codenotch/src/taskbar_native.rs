@@ -193,7 +193,8 @@ fn target(data: &Data, x: f32, y: f32) -> Option<(usize, f32, f32)> {
     if y < 0.0 || y >= data.height as f32 || !x.is_finite() || !y.is_finite() { return None; }
     taskbar_model::layout(&data.frame, data.width as f32, data.height as f32, data.scale)
         .into_iter().find(|slot| slot.contains(x, y, data.height as f32))
-        .map(|slot| (slot.index, slot.x, slot.width))
+        // The card centres on the ring and its tail points at it, not at the whole cell.
+        .map(|slot| (slot.index, slot.center_x - slot.unit * taskbar_model::UNITS / 2.0, slot.unit * taskbar_model::UNITS))
 }
 
 fn bump_hover(state: &NativeState) -> u64 {
