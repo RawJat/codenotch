@@ -239,6 +239,39 @@ pub fn hide_taskbar_hover(app: AppHandle) {
     schedule_hover_hide(app, epoch);
 }
 
+/// Where the card is in its window, in screen px: the part nearest the strip, as tall as the page
+/// measured it. The rest of the window is empty.
+fn card_rect(bounds: Rect, strip: Rect, content_height: f64) -> Rect {
+    let height = (content_height.round() as i32).clamp(0, bounds.bottom - bounds.top);
+    if bounds.top >= strip.bottom { Rect { bottom: bounds.top + height, ..bounds } }
+    else { Rect { top: bounds.bottom - height, ..bounds } }
+}
+
+/// The window is mostly empty, so only the card takes the pointer: elsewhere clicks go through to
+/// what is behind it. The pointer on the card also holds it open, as on the notch.
+fn watch_card_pointer(app: AppHandle) {
+    std::thread::spawn(move || {
+        let (mut shown, mut inside) = (false, false);
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            let Some(window) = app.get_webview_window(HOVER) else { continue };
+            if !window.is_visible().unwrap_or(false) { shown = false; continue; }
+            let card = {
+                let state = HOVER_STATE.lock().unwrap();
+                state.bounds.zip(state.anchor).zip(state.content_height)
+                    .map(|((bounds, anchor), height)| card_rect(bounds, anchor.strip, height))
+            };
+            let now = card.zip(app.cursor_position().ok()).is_some_and(|(r, p)|
+                p.x >= r.left as f64 && p.x < r.right as f64 && p.y >= r.top as f64 && p.y < r.bottom as f64);
+            if shown && now == inside { continue; }
+            if shown || now { hold_taskbar_hover(app.clone(), now); }
+            shown = true;
+            inside = now;
+            let _ = window.set_ignore_cursor_events(!now);
+        }
+    });
+}
+
 /// A card is up or on its way, so moving to another ring switches it at once.
 pub(crate) fn hover_open() -> bool { HOVER_STATE.lock().unwrap().item_id.is_some() }
 
@@ -266,7 +299,7 @@ pub fn report_taskbar_hover_size(app: AppHandle, window: tauri::WebviewWindow, i
         if state.item_id.as_deref() != Some(&id) { return Ok(()); }
         state.content_height = Some(height);
         let Some(anchor) = state.anchor else { return Ok(()); };
-        let Some(bounds) = anchor.position(Some(height)) else { return Ok(()); };
+        let Some(bounds) = anchor.position() else { return Ok(()); };
         let unchanged = state.bounds == Some(bounds);
         state.bounds = Some(bounds);
         (state.show_epoch, bounds, unchanged)
@@ -335,7 +368,7 @@ fn show_hover_on_main(app: &AppHandle, id: String, anchor_x: f64, anchor_width: 
     let bounds = {
         let mut state = HOVER_STATE.lock().unwrap();
         if state.show_epoch != epoch || (!state.over_strip && !state.held) { return; }
-        let Some(bounds) = anchor.position(state.content_height) else { return; };
+        let Some(bounds) = anchor.position() else { return; };
         state.anchor = Some(anchor);
         state.bounds = Some(bounds);
         bounds
@@ -358,6 +391,8 @@ fn show_hover_on_main(app: &AppHandle, id: String, anchor_x: f64, anchor_width: 
         .decorations(false).transparent(true).shadow(false).skip_taskbar(true).always_on_top(true)
         .focused(false).focusable(false).visible(false).initialization_script(script).build();
     if let Ok(w) = result {
+        static WATCHING: AtomicBool = AtomicBool::new(false);
+        if !WATCHING.swap(true, Ordering::AcqRel) { watch_card_pointer(app.clone()); }
         place_hover(&w, bounds, false);
         w.on_window_event(|event| {
             if matches!(event, tauri::WindowEvent::Destroyed) { HOVER_STATE.lock().unwrap().ready = false; }
@@ -509,8 +544,10 @@ fn needs_child_placement(desired: Rect, actual: Option<Rect>, visible: bool) -> 
 struct HoverAnchor { strip: Rect, screen: Rect, x: f64, width: f64, scale: f64 }
 
 impl HoverAnchor {
-    fn position(self, content_height: Option<f64>) -> Option<Rect> {
-        hover_position(self.strip, self.screen, self.x, self.width, self.scale, content_height.unwrap_or(360.0 * self.scale))
+    /// As tall as the tallest card, whichever card it holds: a WebView redrawn at a new size shows
+    /// a frame of its old layout, which moving between rings of different heights made a flash.
+    fn position(self) -> Option<Rect> {
+        hover_position(self.strip, self.screen, self.x, self.width, self.scale, CARD_ROOM * self.scale)
     }
 }
 
@@ -519,6 +556,8 @@ fn measured_hover_height(height: f64, dpr: f64) -> Option<f64> {
     Some(height.clamp(40.0, 600.0) * dpr)
 }
 
+/// The tallest card and its tail, in logical px: what `measured_hover_height` lets a card measure.
+const CARD_ROOM: f64 = 600.0;
 /// The notch card's width on a flat edge, `body[data-edge="bottom"] #card` in notch.html.
 const CARD_WIDTH: f64 = 246.0;
 /// The notch's TAIL_GAP: the tail's point stops this far short of what it points at.
@@ -1105,17 +1144,21 @@ mod tests {
         assert_eq!(refresh_position(BAR, Some(&[r(0,1920)]), Some(known), false,280,8,100), None);
     }
     #[test]
-    fn shorter_content_resizes_upward_while_preserving_the_taskbar_anchor_at_150_percent_dpi() {
+    fn the_card_window_keeps_its_size_and_the_card_sits_on_the_strips_side_of_it() {
         let anchor = HoverAnchor {
             strip: Rect { left:-1500, top:1360, right:-1080, bottom:1414 },
             screen: Rect { left:-2880, top:-200, right:0, bottom:1420 },
             x:72.0, width:60.0, scale:1.5,
         };
-        let old = anchor.position(None).unwrap();
-        let short = anchor.position(measured_hover_height(180.0,1.5)).unwrap();
-        assert_eq!((short.left,short.right,short.bottom), (old.left,old.right,old.bottom));
-        assert_eq!((short.top,short.bottom), (1074,1344));
-        assert_eq!(short.bottom-short.top, 270);
+        let window = anchor.position().unwrap();
+        assert_eq!(window, Rect { left:-1582, top:444, right:-1213, bottom:1344 }, "the tallest card's room, 16 px above the strip");
+        let card = card_rect(window, anchor.strip, measured_hover_height(180.0, 1.5).unwrap());
+        assert_eq!((card.left, card.top, card.right, card.bottom), (window.left, 1074, window.right, window.bottom));
+        assert_eq!(card_rect(window, anchor.strip, 5000.0), window, "never more than the window");
+        let top_strip = Rect { left:8, top:3, right:288, bottom:37 };
+        let below = HoverAnchor { strip: top_strip, screen: Rect { left:0, top:0, right:1920, bottom:1080 }, x:0.0, width:40.0, scale:1.0 }.position().unwrap();
+        assert_eq!((below.top, below.bottom), (48, 648));
+        assert_eq!(card_rect(below, top_strip, 200.0), Rect { bottom:248, ..below }, "under a top taskbar the card hangs from the window's top");
     }
     #[test]
     fn measured_content_is_bounded_and_invalid_sizes_are_rejected() {

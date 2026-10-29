@@ -2474,8 +2474,8 @@ if(CARD_ONLY){
   renderRing=function(){ drawRings(); if(providers().length) renderCard(); };
   listen('taskbar_hover_item',e=>{ cardShownId=e.payload; hoverId=cardId(cardShownId); lastCardSize=''; renderRing(); }).catch(()=>{});
   listen('taskbar_hover_tail',e=>{ cardTail=e.payload; placeCard(); }).catch(()=>{});
-  document.body.addEventListener('pointerenter',()=>invoke('hold_taskbar_hover',{held:true}).catch(()=>{}));
-  document.body.addEventListener('pointerleave',()=>invoke('hold_taskbar_hover',{held:false}).catch(()=>{}));
+  // Holding the card open while the pointer is on it is Rust's: it also lets clicks through the
+  // empty part of the window, and a page that is let through never hears the pointer leave.
 }
 </script>
 </body>
