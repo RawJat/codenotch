@@ -212,7 +212,8 @@ fn defer(state: &Rc<NativeState>, action: Action) {
     let Some(app) = state.app.clone() else { return; };
     let generation = state.generation;
     std::thread::spawn(move || {
-        if matches!(action, Action::Hover { .. }) { std::thread::sleep(Duration::from_millis(140)); }
+        // The delay keeps a pass over the strip from opening a card; one already open just moves.
+        if matches!(action, Action::Hover { .. }) && !crate::taskbar::hover_open() { std::thread::sleep(Duration::from_millis(140)); }
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
             let Some(current) = current_state() else { return; };

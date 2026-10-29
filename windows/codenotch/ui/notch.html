@@ -189,11 +189,14 @@
   body[data-edge="top"] #tail,body[data-edge="bottom"] #tail{right:auto;width:32.7px;height:28.2px}
   body[data-edge="top"] #tail{clip-path:path('M0 28.2C8.18 28.2 12.43 11.84 16.36 0C20.29 11.84 24.54 28.2 32.72 28.2Z')}
   body[data-edge="bottom"] #tail{clip-path:path('M0 0C8.18 0 12.43 16.36 16.36 28.2C20.29 16.36 24.54 0 32.72 0Z')}
-  /* The taskbar's hover card (CARD_ONLY): the card alone at the top of its window and the bottom
-     edge's tail under it, pointing down at the ring; turned over when the taskbar is at the top. */
+  /* The taskbar's hover card (CARD_ONLY): the card alone, with the bottom edge's tail under it
+     pointing down at the ring; turned over when the taskbar is at the top. Both are pinned to the
+     strip's side of the window, so the card grows away from the taskbar as the window does. */
   html.card-only #root > :not(#card):not(#tail){display:none!important}
-  html.card-only #card{display:block;left:0;right:auto;top:0;transform:none;margin:0;width:100%;max-width:none;max-height:none;overflow:visible}
+  html.card-only #card{display:block;left:0;right:auto;transform:none;margin:0;width:100%;max-width:none;max-height:none;overflow:visible}
   html.card-only #tail{display:block;right:auto;width:32.7px;height:28.2px;clip-path:path('M0 0C8.18 0 12.43 16.36 16.36 28.2C20.29 16.36 24.54 0 32.72 0Z')}
+  /* The tail moves with the card between rings, on the curve Rust moves the window on (GLIDE_MS) */
+  html.card-only #tail{transition:left .3s cubic-bezier(.33,1,.68,1)}
   html.card-only.below #tail{clip-path:path('M0 28.2C8.18 28.2 12.43 11.84 16.36 0C20.29 11.84 24.54 28.2 32.72 28.2Z')}
 
   /* Show on hover, the Mac's .onHover: folded, the notch rests as a small pill at the edge. Its size is
@@ -1669,16 +1672,19 @@ function placeCard(){
   }
 }
 
-// The taskbar's hover card: the card at the top of its window and the tail under it, its point on the
-// hovered ring. Rust sizes the window to the two and puts it above the strip, or below a top taskbar.
+// The taskbar's hover card: the tail at the window's edge nearest the strip, its point on the hovered
+// ring, and the card past it. Rust sizes the window to the two and puts it above the strip, or below
+// a top taskbar; until a new height is in, the card keeps its place and only its far edge moves.
 let cardTail=null, cardShownId=null, lastCardSize='', cardReady=false;
 function placeTaskbarCard(){
   const below=!!(cardTail&&cardTail.below), k=window.devicePixelRatio||1, tw=tail.offsetWidth||33;
   document.documentElement.classList.toggle('below',below);
-  card.style.top=(below?TAIL_LENGTH:0)+'px';
+  card.style.top=below?TAIL_LENGTH+'px':'auto'; card.style.bottom=below?'auto':TAIL_LENGTH+'px';
+  tail.style.top=below?'0px':'auto'; tail.style.bottom=below?'auto':'0px';
   const ch=card.offsetHeight, cw=card.offsetWidth;
-  tail.style.top=(below?0:ch)+'px';
   const x=cardTail&&Number.isFinite(cardTail.x)?cardTail.x/k:cw/2;
+  // A card coming up fresh starts at its ring; only one already showing travels
+  tail.style.transition=cardTail&&cardTail.glide?'':'none';
   tail.style.left=Math.round(Math.max(16,Math.min(cw-16-tw,x-tw/2)))+'px';
   const height=Math.ceil(ch+TAIL_LENGTH), key=cardShownId+'|'+height+'|'+k;
   if(!cardShownId||key===lastCardSize) return;

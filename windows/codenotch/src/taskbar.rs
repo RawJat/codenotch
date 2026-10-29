@@ -2,7 +2,7 @@
 //! Only our window is parented; Explorer is never resized, subclassed, or injected into.
 use crate::{usage::UsageSnapshot, AppState};
 use serde::Serialize;
-use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
+use std::sync::{atomic::{AtomicBool, AtomicU64, Ordering}, Mutex};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[cfg(not(windows))]
@@ -215,7 +215,6 @@ pub fn show_taskbar_hover(app: AppHandle, id: String, anchor_x: f64, anchor_widt
         let mut state = HOVER_STATE.lock().unwrap();
         state.epoch = state.epoch.wrapping_add(1);
         state.show_epoch = state.epoch;
-        if state.item_id.as_deref() != Some(&id) { state.content_height = None; }
         state.item_id = Some(id.clone());
         state.over_strip = true;
         state.held = false;
@@ -239,6 +238,9 @@ pub fn hide_taskbar_hover(app: AppHandle) {
     };
     schedule_hover_hide(app, epoch);
 }
+
+/// A card is up or on its way, so moving to another ring switches it at once.
+pub(crate) fn hover_open() -> bool { HOVER_STATE.lock().unwrap().item_id.is_some() }
 
 /// Crossing the small gap into the card keeps it open without activating either window.
 #[tauri::command]
@@ -265,9 +267,9 @@ pub fn report_taskbar_hover_size(app: AppHandle, window: tauri::WebviewWindow, i
         state.content_height = Some(height);
         let Some(anchor) = state.anchor else { return Ok(()); };
         let Some(bounds) = anchor.position(Some(height)) else { return Ok(()); };
-        if state.bounds == Some(bounds) { return Ok(()); }
+        let unchanged = state.bounds == Some(bounds);
         state.bounds = Some(bounds);
-        (state.show_epoch, bounds)
+        (state.show_epoch, bounds, unchanged)
     };
     let handle = app.clone();
     app.run_on_main_thread(move || {
@@ -278,7 +280,10 @@ pub fn report_taskbar_hover_size(app: AppHandle, window: tauri::WebviewWindow, i
         };
         let enabled = handle.state::<AppState>().cfg.lock().unwrap().taskbar_mode != "off";
         let strip_visible = strip_visible(&handle);
-        if let Some(w) = handle.get_webview_window(HOVER) { place_hover(&w, pending.1, show && enabled && strip_visible); }
+        if let Some(w) = handle.get_webview_window(HOVER) {
+            if pending.2 && w.is_visible().unwrap_or(false) { return; }
+            place_hover(&w, pending.1, show && enabled && strip_visible);
+        }
     }).map_err(|error| error.to_string())
 }
 
@@ -338,7 +343,9 @@ fn show_hover_on_main(app: &AppHandle, id: String, anchor_x: f64, anchor_width: 
     if let Some(w) = app.get_webview_window(HOVER) {
         let _ = w.emit("taskbar_hover_item", &id);
         let ready = HOVER_STATE.lock().unwrap().ready;
-        place_hover(&w, bounds, ready);
+        // An open card travels to the new ring now. A hidden one shows once the page has measured
+        // the new account, so it never comes up for a frame with the last one's contents.
+        place_hover(&w, bounds, ready && w.is_visible().unwrap_or(false));
         return;
     }
     HOVER_STATE.lock().unwrap().ready = false;
@@ -358,16 +365,55 @@ fn show_hover_on_main(app: &AppHandle, id: String, anchor_x: f64, anchor_width: 
     }
 }
 
+/// The Mac's `NotchMotion.glide`: the card is one object that travels between rings and resizes
+/// on the way, which reads far better than one card leaving and another arriving.
+const GLIDE_MS: f64 = 300.0;
+static GLIDE: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(windows)]
+fn glide(window: &tauri::WebviewWindow, from: i32, to: Rect) {
+    use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE}};
+    let epoch = GLIDE.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
+    let window = window.clone();
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(15));
+            let t = (started.elapsed().as_secs_f64() * 1000.0 / GLIDE_MS).min(1.0);
+            let left = from + ((to.left - from) as f64 * (1.0 - (1.0 - t).powi(3))).round() as i32;
+            let step = window.clone();
+            let posted = window.app_handle().run_on_main_thread(move || {
+                if GLIDE.load(Ordering::Acquire) != epoch { return; }
+                if let Ok(raw) = step.hwnd() { unsafe {
+                    let _ = SetWindowPos(HWND(raw.0 as _), HWND_TOPMOST, left, to.top, to.right - to.left, to.bottom - to.top, SWP_NOACTIVATE);
+                } }
+            });
+            if posted.is_err() || t >= 1.0 || GLIDE.load(Ordering::Acquire) != epoch { return; }
+        }
+    });
+}
+
 fn place_hover(window: &tauri::WebviewWindow, bounds: Rect, show: bool) {
     // Where the hovered ring is, for the tail, in physical px from the card window's left edge
     let anchor = HOVER_STATE.lock().unwrap().anchor;
     if let Some(anchor) = anchor {
         let ring = anchor.strip.left as f64 + (anchor.x + anchor.width / 2.0).clamp(0.0, (anchor.strip.right - anchor.strip.left) as f64);
-        let _ = window.emit("taskbar_hover_tail", serde_json::json!({ "x": ring - bounds.left as f64, "below": bounds.top >= anchor.strip.bottom }));
+        let glide = window.is_visible().unwrap_or(false);
+        let _ = window.emit("taskbar_hover_tail", serde_json::json!({ "x": ring - bounds.left as f64, "below": bounds.top >= anchor.strip.bottom, "glide": glide }));
     }
     #[cfg(windows)] {
-        use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_SHOWWINDOW}};
+        use windows::Win32::{Foundation::{HWND, RECT}, UI::WindowsAndMessaging::{GetWindowRect, SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_SHOWWINDOW}};
         if let Ok(raw) = window.hwnd() { unsafe {
+            let mut current = RECT::default();
+            let visible = window.is_visible().unwrap_or(false);
+            if show && visible && GetWindowRect(HWND(raw.0 as _), &mut current).is_ok() && current.left != bounds.left {
+                // Its new height now, from where it is; then the way across
+                let _ = SetWindowPos(HWND(raw.0 as _), HWND_TOPMOST, current.left, bounds.top,
+                    bounds.right - bounds.left, bounds.bottom - bounds.top, SWP_NOACTIVATE);
+                glide(window, current.left, bounds);
+                return;
+            }
+            GLIDE.fetch_add(1, Ordering::AcqRel); // a placement that is not a glide ends any glide
             if show && !window.is_visible().unwrap_or(false) {
                 // Place while hidden, then let Tauri restore its native/webview visibility
                 // before reinforcing the non-activating placement. The window is unfocusable.
